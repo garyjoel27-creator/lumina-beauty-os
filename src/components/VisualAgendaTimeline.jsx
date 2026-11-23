@@ -28,6 +28,54 @@ function minutesToTime(total) {
   return `${h}:${m}`;
 }
 
+function computeOverlapLayout(appointments) {
+  const placed = [];
+  const sorted = [...appointments].sort((a, b) => {
+    const sa = timeToMinutes(a.timeSlot || a.time);
+    const sb = timeToMinutes(b.timeSlot || b.time);
+    return sa - sb || (Number(b.durationMinutes) || 60) - (Number(a.durationMinutes) || 60);
+  });
+
+  // Group overlapping clusters
+  const clusters = [];
+  let currentCluster = [];
+  let clusterEnd = -1;
+
+  for (const apt of sorted) {
+    const start = timeToMinutes(apt.timeSlot || apt.time);
+    const end = start + Math.max(30, Number(apt.durationMinutes) || 60);
+    if (currentCluster.length === 0 || start < clusterEnd) {
+      currentCluster.push({ apt, start, end });
+      clusterEnd = Math.max(clusterEnd, end);
+    } else {
+      clusters.push(currentCluster);
+      currentCluster = [{ apt, start, end }];
+      clusterEnd = end;
+    }
+  }
+  if (currentCluster.length > 0) clusters.push(currentCluster);
+
+  for (const cluster of clusters) {
+    const colEnds = [];
+    const assigned = [];
+    for (const item of cluster) {
+      let col = colEnds.findIndex((e) => e <= item.start);
+      if (col === -1) {
+        col = colEnds.length;
+        colEnds.push(item.end);
+      } else {
+        colEnds[col] = item.end;
+      }
+      assigned.push({ apt: item.apt, col });
+    }
+    const totalCols = Math.max(1, colEnds.length);
+    for (const a of assigned) {
+      placed.push({ apt: a.apt, col: a.col, totalCols });
+    }
+  }
+  return placed;
+}
+
 const VisualAgendaTimeline = ({
   appointments = [],
   services = [],
@@ -67,6 +115,8 @@ const VisualAgendaTimeline = ({
       .filter((a) => a.date === selectedDate && a.status !== 'rejected' && a.status !== 'expired')
       .sort((a, b) => timeToMinutes(a.timeSlot || a.time) - timeToMinutes(b.timeSlot || b.time));
   }, [appointments, selectedDate]);
+
+  const laidOutAppointments = useMemo(() => computeOverlapLayout(dayAppointments), [dayAppointments]);
 
   const hours = useMemo(() => {
     const arr = [];
@@ -296,8 +346,8 @@ const VisualAgendaTimeline = ({
             );
           })}
 
-          {/* Bloques de Citas */}
-          {dayAppointments.map((apt) => {
+          {/* Bloques de Citas (con soporte de columnas paralelas para citas simultáneas) */}
+          {laidOutAppointments.map(({ apt, col, totalCols }) => {
             const isDragging = dragState?.aptId === apt.id;
             const effectiveStart = isDragging
               ? dragState.previewStartMin
@@ -307,16 +357,26 @@ const VisualAgendaTimeline = ({
               : Number(apt.durationMinutes) || 60;
 
             const topPx = Math.max(0, ((effectiveStart - startMinutes) / 60) * PIXELS_PER_HOUR);
-            const heightPx = Math.max(46, (effectiveDur / 60) * PIXELS_PER_HOUR - 4);
+            const isCompact = effectiveDur <= 30;
+            const heightPx = Math.max(isCompact ? 68 : 76, (effectiveDur / 60) * PIXELS_PER_HOUR - 4);
             const isBlock = Boolean(apt.isBlock);
             const isPending = apt.status === 'pending';
+
+            const leftExpr =
+              totalCols > 1
+                ? `calc(3.5rem + (${col} * (100% - 3.75rem) / ${totalCols}))`
+                : '3.5rem';
+            const widthExpr =
+              totalCols > 1
+                ? `calc((100% - 3.75rem) / ${totalCols} - 4px)`
+                : 'calc(100% - 3.75rem)';
 
             return (
               <div
                 key={apt.id}
-                style={{ top: `${topPx}px`, height: `${heightPx}px` }}
+                style={{ top: `${topPx}px`, height: `${heightPx}px`, left: leftExpr, width: widthExpr }}
                 onClick={() => openEditSheet(apt)}
-                className={`absolute left-14 right-1 rounded-2xl border px-3 py-2 flex flex-col justify-between transition-shadow cursor-pointer ${
+                className={`absolute rounded-2xl border px-2.5 py-1.5 flex flex-col justify-between overflow-hidden transition-shadow cursor-pointer ${
                   isDragging ? 'z-30 shadow-xl ring-2 ring-[#C87A72]' : 'z-10 shadow-sm'
                 } ${
                   isBlock
@@ -326,9 +386,9 @@ const VisualAgendaTimeline = ({
                     : 'bg-gradient-to-r from-[#FFF7F5] to-[#FDF2EE] border-[#E3BDB6] text-[#2A201D]'
                 }`}
               >
-                <div className="flex items-start justify-between gap-2 min-w-0">
+                <div className="flex items-start justify-between gap-1.5 min-w-0">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[11px] font-mono font-bold text-[#9E4E4D]">
                         {minutesToTime(effectiveStart)} · {effectiveDur}m
                       </span>
@@ -339,9 +399,11 @@ const VisualAgendaTimeline = ({
                       )}
                     </div>
                     <p className="text-xs font-bold truncate leading-tight mt-0.5">{apt.clientName}</p>
-                    <p className="text-[11px] text-[#6E5A54] truncate">
-                      {apt.serviceName} {apt.barberName ? `· ${apt.barberName.split(' ')[0]}` : ''}
-                    </p>
+                    {!isCompact && (
+                      <p className="text-[11px] text-[#6E5A54] truncate">
+                        {apt.serviceName} {apt.barberName ? `· ${apt.barberName.split(' ')[0]}` : ''}
+                      </p>
+                    )}
                   </div>
 
                   {/* Asa Táctil 44x44px para mover con 1 dedo sin bloquear scroll */}
@@ -366,7 +428,7 @@ const VisualAgendaTimeline = ({
                   onPointerDown={(e) => handlePointerStart(e, apt, 'resize')}
                   onClick={(e) => e.stopPropagation()}
                   style={{ touchAction: 'none' }}
-                  className="self-center -mb-1 px-4 py-1 rounded-full bg-white/85 border border-[#E9D9CF] text-[10px] font-bold text-[#9A847D] hover:text-[#B86566] flex items-center gap-1 cursor-ns-resize"
+                  className="self-center px-3 py-0.5 rounded-full bg-white/85 border border-[#E9D9CF] text-[10px] font-bold text-[#9A847D] hover:text-[#B86566] flex items-center gap-1 cursor-ns-resize shrink-0"
                   title="Arrastra verticalmente para cambiar duración"
                 >
                   <ArrowUpDown size={10} />

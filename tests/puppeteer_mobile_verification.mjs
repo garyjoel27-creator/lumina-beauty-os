@@ -33,6 +33,11 @@ function startStaticServer() {
     const server = http.createServer((req, res) => {
       const urlPath = (req.url || '/').split('?')[0];
       if (urlPath.startsWith('/api/')) {
+        if (urlPath.includes('/sync')) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, appointments: [], queue: [], clients: [] }));
+          return;
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, offlineMock: true }));
         return;
@@ -78,17 +83,49 @@ async function main() {
       const page = await ctx.newPage();
       await page.setViewport({ width: vp.width, height: vp.height, isMobile: true, hasTouch: true });
 
-      // 1. Dashboard "/"
-      await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle2' });
+      // 1. Dashboard "/?shop=campodonico-nails" (explicit ?shop= query param + empty /sync response!)
+      await page.goto(`${baseUrl}/?shop=campodonico-nails`, { waitUntil: 'networkidle2' });
+      await new Promise((r) => setTimeout(r, 500));
       const dashOverflow = await page.evaluate(() => ({
         scrollW: document.documentElement.scrollWidth,
         innerW: window.innerWidth,
         bgColor: getComputedStyle(document.body).backgroundColor,
+        moverCount: document.querySelectorAll('[aria-label="Mover cita"]').length,
+        hasPendingTray: document.body.innerText.includes('Solicitudes QR por Aprobar'),
       }));
       check(
         dashOverflow.scrollW <= dashOverflow.innerW,
         `Dashboard 0px overflow (${dashOverflow.scrollW} <= ${dashOverflow.innerW}) & luminous canvas (${dashOverflow.bgColor})`
       );
+      check(
+        dashOverflow.moverCount >= 3 && dashOverflow.hasPendingTray,
+        `Demo agenda & pending QR tray survive empty /sync (${dashOverflow.moverCount} draggable appointments)`
+      );
+
+      // 1b. Switch to Peluquería & Estética WHILE on /?shop=campodonico-nails (must NOT snap back!)
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button'));
+        const peluBtn = btns.find((b) => b.textContent?.includes('Peluquería & Estética'));
+        peluBtn?.click();
+      });
+      await new Promise((r) => setTimeout(r, 450));
+      const switchedDash = await page.evaluate(() => ({
+        url: window.location.search,
+        hasAtelier: document.body.innerText.includes('Lumina Atelier'),
+        hasBalayage: document.body.innerText.includes('Balayage'),
+      }));
+      check(
+        switchedDash.url.includes('shop=peluqueria-estetica') && switchedDash.hasAtelier && switchedDash.hasBalayage,
+        `1-click switcher from ?shop=campodonico-nails switches cleanly to peluqueria-estetica (URL: ${switchedDash.url})`
+      );
+
+      // Switch back to Nails before testing /clients
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button'));
+        const nailsBtn = btns.find((b) => b.textContent?.includes('Uñas & Manicura'));
+        nailsBtn?.click();
+      });
+      await new Promise((r) => setTimeout(r, 350));
 
       // 2. Clients 3D "/clients" + 3D flip button visibility
       await page.goto(`${baseUrl}/clients`, { waitUntil: 'networkidle2' });

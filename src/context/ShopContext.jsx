@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   DEFAULT_SHOP_SLUG,
   SHOP_CAMPODONICO_NAILS_CONFIG,
@@ -12,6 +12,7 @@ import {
 } from '../lib/shopUtils';
 import {
   SyncEngine,
+  dispatchSalonAction,
   fetchAdminShops,
   provisionShop,
   updateShopStatus as apiUpdateShopStatus,
@@ -67,9 +68,12 @@ function getFallbackShopForSlug(slug, storage = null, stripPin = false) {
 
 export function ShopProvider({ children, initialSlug = null, customStorage = null, customFetch = null }) {
   let routerLocation = null;
+  let routerNavigate = null;
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     routerLocation = useLocation();
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    routerNavigate = useNavigate();
   } catch {
     if (typeof window !== 'undefined') routerLocation = window.location;
   }
@@ -301,8 +305,17 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
       if (syncEngineRef.current && !isPublicRoute) {
         syncEngineRef.current.switchShop(cleanSlug, pin || cfg?.pin || '');
       }
+      // Keep URL ?shop= in sync so explicit query param doesn't snap back, and avoid stale /clients/:id 404 across editions
+      if (!isPublicRoute && routerNavigate) {
+        const currentPathname = routerLocation?.pathname || '/';
+        const nextPathname = /^\/clients\/[^/]+/.test(currentPathname) ? '/clients' : currentPathname;
+        const params = new URLSearchParams(routerLocation?.search || '');
+        params.set('shop', cleanSlug);
+        params.delete('shopSlug');
+        routerNavigate({ pathname: nextPathname, search: `?${params.toString()}` }, { replace: true });
+      }
     },
-    [activeShopSlug, isPublicRoute, storage, loadShopConfig]
+    [activeShopSlug, isPublicRoute, storage, loadShopConfig, routerNavigate, routerLocation?.pathname, routerLocation?.search]
   );
 
   useEffect(() => {
@@ -346,6 +359,24 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
     },
     [activeShopSlug, storage]
   );
+
+  const toggleWalkInOpen = useCallback(() => {
+    const nextWalkIn = !(activeShop?.walkInOpen !== false);
+    setActiveShop((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, walkInOpen: nextWalkIn };
+      try {
+        storage.setItem(`lumina_beauty_${activeShopSlug}_config`, JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+    if (!isPublicRoute) {
+      dispatchSalonAction(activeShopSlug, resolvedPin, 'update_shop_schedule', { walkInOpen: nextWalkIn }, { storage, fetch: customFetch });
+    }
+    return nextWalkIn;
+  }, [activeShop?.walkInOpen, activeShopSlug, resolvedPin, isPublicRoute, storage, customFetch]);
 
   const refreshShops = useCallback(
     async (adminKey = 'lumina-beauty-admin-2026') => {
@@ -509,6 +540,7 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
       verifyAndUnlockShopPin,
       forceSyncNow,
       updateLocalShopSchedule,
+      toggleWalkInOpen,
     }),
     [
       activeShopSlug,
@@ -532,6 +564,7 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
       verifyAndUnlockShopPin,
       forceSyncNow,
       updateLocalShopSchedule,
+      toggleWalkInOpen,
     ]
   );
 

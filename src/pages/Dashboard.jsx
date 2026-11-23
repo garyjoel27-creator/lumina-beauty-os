@@ -30,6 +30,7 @@ import {
   dispatchSalonAction,
   calculateHoldExpiration,
   getShopStorageKeys,
+  recordLocalDeletion,
 } from '../lib/syncService';
 import { soundFx } from '../lib/soundFx';
 
@@ -61,7 +62,13 @@ const Dashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [dailySales, setDailySales] = useState([]);
   const [reviewQueue, setReviewQueue] = useState([]);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [commissionRate, setCommissionRate] = useState(50); // 50/50, 60/40, 40/60
+
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [scheduleSavedMsg, setScheduleSavedMsg] = useState(false);
 
@@ -150,6 +157,7 @@ const Dashboard = () => {
             date: todayIso,
             timeSlot: '10:30',
             status: 'confirmed',
+            isDemo: true,
             createdAt: now,
           },
           {
@@ -166,6 +174,7 @@ const Dashboard = () => {
             date: todayIso,
             timeSlot: '12:30',
             status: 'pending',
+            isDemo: true,
             createdAt: now,
             holdExpiresAt: calculateHoldExpiration(now, 10),
           },
@@ -183,6 +192,7 @@ const Dashboard = () => {
             date: todayIso,
             timeSlot: '16:00',
             status: 'confirmed',
+            isDemo: true,
             createdAt: now,
           },
         ];
@@ -208,6 +218,7 @@ const Dashboard = () => {
             date: todayIso,
             timeSlot: '10:00',
             status: 'confirmed',
+            isDemo: true,
             createdAt: now,
           },
           {
@@ -224,6 +235,7 @@ const Dashboard = () => {
             date: todayIso,
             timeSlot: '13:00',
             status: 'pending',
+            isDemo: true,
             createdAt: now,
             holdExpiresAt: calculateHoldExpiration(now, 10),
           },
@@ -241,6 +253,7 @@ const Dashboard = () => {
             date: todayIso,
             timeSlot: '16:30',
             status: 'confirmed',
+            isDemo: true,
             createdAt: now,
           },
         ];
@@ -277,7 +290,9 @@ const Dashboard = () => {
       a.id === apt.id ? { ...a, status: 'confirmed', holdExpiresAt: null } : a
     );
     persistAppointments(next);
-    dispatchSalonAction(activeShopSlug, resolvedPin, 'approve', { appointmentId: apt.id });
+    if (!apt.isDemo) {
+      dispatchSalonAction(activeShopSlug, resolvedPin, 'approve', { appointmentId: apt.id });
+    }
   };
 
   const handleRejectAppointment = (apt) => {
@@ -286,7 +301,9 @@ const Dashboard = () => {
       a.id === apt.id ? { ...a, status: 'rejected', holdExpiresAt: null } : a
     );
     persistAppointments(next);
-    dispatchSalonAction(activeShopSlug, resolvedPin, 'reject', { appointmentId: apt.id });
+    if (!apt.isDemo) {
+      dispatchSalonAction(activeShopSlug, resolvedPin, 'reject', { appointmentId: apt.id });
+    }
   };
 
   const handleAddAppointment = (payload) => {
@@ -294,6 +311,7 @@ const Dashboard = () => {
       ...payload,
       id: `apt-man-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       shopSlug: activeShopSlug,
+      time: payload.timeSlot || payload.time,
       createdAt: Date.now(),
     };
     persistAppointments([...appointments, created]);
@@ -301,14 +319,22 @@ const Dashboard = () => {
   };
 
   const handleRescheduleAppointment = (aptId, patch) => {
-    const next = appointments.map((a) => (a.id === aptId ? { ...a, ...patch } : a));
+    const target = appointments.find((a) => a.id === aptId);
+    const syncedPatch = patch.timeSlot ? { ...patch, time: patch.timeSlot } : patch;
+    const next = appointments.map((a) => (a.id === aptId ? { ...a, ...syncedPatch } : a));
     persistAppointments(next);
-    dispatchSalonAction(activeShopSlug, resolvedPin, 'reschedule', { appointmentId: aptId, ...patch });
+    if (!target?.isDemo) {
+      dispatchSalonAction(activeShopSlug, resolvedPin, 'reschedule', { appointmentId: aptId, ...syncedPatch });
+    }
   };
 
   const handleDeleteAppointment = (aptId) => {
+    const target = appointments.find((a) => a.id === aptId);
+    recordLocalDeletion(activeShopSlug, aptId);
     persistAppointments(appointments.filter((a) => a.id !== aptId));
-    dispatchSalonAction(activeShopSlug, resolvedPin, 'delete_appointment', { appointmentId: aptId });
+    if (!target?.isDemo) {
+      dispatchSalonAction(activeShopSlug, resolvedPin, 'delete_appointment', { appointmentId: aptId });
+    }
   };
 
   const handleRegisterSale = (e) => {
@@ -342,7 +368,7 @@ const Dashboard = () => {
     const reviewItem = {
       id: `rev-${now}`,
       clientName: sale.clientName,
-      clientPhone: sale.clientPhone || activeShop?.phone || '638877945',
+      clientPhone: sale.clientPhone || '',
       serviceName: sale.serviceName,
       createdAt: now,
       sendAfter: now + 30 * 60 * 1000, // 30 minutos
@@ -845,6 +871,14 @@ const Dashboard = () => {
                     entry.clientPhone,
                     `¡Hola ${entry.clientName}! ✨ Gracias por tu visita hoy en ${activeShop?.name}. Si te ha encantado tu ${entry.serviceName}, nos haría muchísima ilusión tu reseña 5⭐ aquí: ${reviewUrl}`
                   );
+                  const remainingMins = entry.sendAfter
+                    ? Math.max(0, Math.ceil((entry.sendAfter - nowTick) / 60000))
+                    : 0;
+                  const readyTimeLabel = entry.sendAfter
+                    ? remainingMins <= 0
+                      ? '¡Listo para enviar!'
+                      : `En ${remainingMins}m (${new Date(entry.sendAfter).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })})`
+                    : '30m';
                   return (
                     <div
                       key={entry.id}
@@ -852,7 +886,9 @@ const Dashboard = () => {
                     >
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-[#2A201D] truncate">{entry.clientName}</p>
-                        <p className="text-[11px] text-[#6E5A54] truncate">{entry.serviceName} · 30m</p>
+                        <p className="text-[11px] text-[#6E5A54] truncate">
+                          {entry.serviceName} · <span className={remainingMins <= 0 ? 'text-[#5C8A74] font-bold' : ''}>{readyTimeLabel}</span>
+                        </p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <a

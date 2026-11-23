@@ -19,6 +19,128 @@ import ClientModal from '../components/ClientModal';
 import { NAIL_SHAPES, NAIL_POLISH_COLORS, COLORIMETRY_PRESETS } from '../lib/shopUtils';
 import { soundFx } from '../lib/soundFx';
 
+const SessionRecorderForm = ({ client, isNails, onSaveSession }) => {
+  const [newName, setNewName] = useState(isNails ? 'Relleno acrílico' : 'Retoque Color Orgánico');
+  const [newFormula, setNewFormula] = useState('');
+  const [newNotes, setNewNotes] = useState('');
+  const [newShape, setNewShape] = useState(client?.nailShape || 'Almendra');
+  const [newColor, setNewColor] = useState(client?.nailColor || 'Milky White');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const formulaText =
+      newFormula.trim() ||
+      (isNails
+        ? `Forma ${newShape} · Esmalte ${newColor}`
+        : client.colorFormula || 'Protocolo habitual');
+
+    onSaveSession({
+      name: newName,
+      formula: formulaText,
+      notes: newNotes.trim(),
+      nailShape: isNails ? newShape : undefined,
+      nailColor: isNails ? newColor : undefined,
+      colorFormula: !isNails ? formulaText : undefined,
+    });
+    setNewFormula('');
+    setNewNotes('');
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="pearl-card p-5 space-y-3.5">
+      <h3 className="text-xl font-serif font-bold text-[#2A201D] flex items-center gap-2">
+        <Plus size={17} className="text-[#C87A72]" />
+        <span>Registrar Visita / Nueva Fórmula</span>
+      </h3>
+
+      <input
+        type="text"
+        value={newName}
+        onChange={(e) => setNewName(e.target.value)}
+        placeholder="Nombre del servicio"
+        className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-sm"
+      />
+
+      {isNails ? (
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap gap-1.5">
+            {NAIL_SHAPES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setNewShape(s.label)}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 cursor-pointer ${
+                  newShape === s.label
+                    ? 'bg-[#F7EAE7] border-[#C87A72] text-[#8E4742]'
+                    : 'bg-white border-[#E9D9CF] text-[#6E5A54]'
+                }`}
+              >
+                <NailShapeIcon shapeName={s.label} size={16} />
+                <span>{s.short}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {NAIL_POLISH_COLORS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setNewColor(c.name)}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 cursor-pointer ${
+                  newColor === c.name
+                    ? 'bg-[#F7EAE7] border-[#C87A72] text-[#2A201D]'
+                    : 'bg-white border-[#E9D9CF] text-[#6E5A54]'
+                }`}
+              >
+                <NailColorSwatch colorName={c.name} size={14} />
+                <span>{c.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {COLORIMETRY_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setNewFormula(p.formula)}
+              className="px-2.5 py-1 rounded-full bg-[#FAF4EE] hover:bg-[#F7EAE7] border border-[#E9D9CF] text-[11px] font-bold text-[#4A3934] cursor-pointer"
+            >
+              + {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <input
+        type="text"
+        value={newFormula}
+        onChange={(e) => setNewFormula(e.target.value)}
+        placeholder={
+          isNails
+            ? 'Detalles extra (ej. Refuerzo Rubber + Top Coat Glass)'
+            : 'Fórmula exacta (ej. Base 7.1 + 8.3 · 20 vol · Matiz 9.21)'
+        }
+        className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs font-mono"
+      />
+
+      <input
+        type="text"
+        value={newNotes}
+        onChange={(e) => setNewNotes(e.target.value)}
+        placeholder="Notas personales para la próxima visita..."
+        className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs"
+      />
+
+      <button type="submit" className="btn-editorial cursor-pointer">
+        <Check size={15} />
+        <span>Guardar en Historial</span>
+      </button>
+    </form>
+  );
+};
+
 const ClientProfile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -36,11 +158,6 @@ const ClientProfile = () => {
   const isNails = activeVertical === 'nails';
 
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [newName, setNewName] = useState(isNails ? 'Relleno acrílico' : 'Retoque Color Orgánico');
-  const [newFormula, setNewFormula] = useState('');
-  const [newNotes, setNewNotes] = useState('');
-  const [newShape, setNewShape] = useState(client?.nailShape || 'Almendra');
-  const [newColor, setNewColor] = useState(client?.nailColor || 'Milky White');
   const [savedToast, setSavedToast] = useState(false);
 
   if (!client) {
@@ -57,25 +174,9 @@ const ClientProfile = () => {
   const radar = getRetentionRadarAlert(client, activeVertical);
   const photoTreatment = client.treatments?.find((t) => t.beforePhoto && t.afterPhoto);
 
-  const handleAddSession = (e) => {
-    e.preventDefault();
-    const formulaText =
-      newFormula.trim() ||
-      (isNails
-        ? `Forma ${newShape} · Esmalte ${newColor}`
-        : client.colorFormula || 'Protocolo habitual');
-
-    addTreatment(client.id, {
-      name: newName,
-      formula: formulaText,
-      notes: newNotes.trim(),
-      nailShape: isNails ? newShape : undefined,
-      nailColor: isNails ? newColor : undefined,
-      colorFormula: !isNails ? formulaText : undefined,
-    });
+  const handleAddSession = (treatmentPayload) => {
+    addTreatment(client.id, treatmentPayload);
     soundFx.playSuccess();
-    setNewFormula('');
-    setNewNotes('');
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 2200);
   };
@@ -260,97 +361,12 @@ const ClientProfile = () => {
 
         {/* Columna Derecha: Registrar Nueva Sesión + Historial */}
         <div className="lg:col-span-2 space-y-5">
-          <form onSubmit={handleAddSession} className="pearl-card p-5 space-y-3.5">
-            <h3 className="text-xl font-serif font-bold text-[#2A201D] flex items-center gap-2">
-              <Plus size={17} className="text-[#C87A72]" />
-              <span>Registrar Visita / Nueva Fórmula</span>
-            </h3>
-
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Nombre del servicio"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-sm"
-            />
-
-            {isNails ? (
-              <div className="space-y-2.5">
-                <div className="flex flex-wrap gap-1.5">
-                  {NAIL_SHAPES.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setNewShape(s.label)}
-                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 cursor-pointer ${
-                        newShape === s.label
-                          ? 'bg-[#F7EAE7] border-[#C87A72] text-[#8E4742]'
-                          : 'bg-white border-[#E9D9CF] text-[#6E5A54]'
-                      }`}
-                    >
-                      <NailShapeIcon shapeName={s.label} size={16} />
-                      <span>{s.short}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {NAIL_POLISH_COLORS.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setNewColor(c.name)}
-                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 cursor-pointer ${
-                        newColor === c.name
-                          ? 'bg-[#F7EAE7] border-[#C87A72] text-[#2A201D]'
-                          : 'bg-white border-[#E9D9CF] text-[#6E5A54]'
-                      }`}
-                    >
-                      <NailColorSwatch colorName={c.name} size={14} />
-                      <span>{c.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {COLORIMETRY_PRESETS.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setNewFormula(p.formula)}
-                    className="px-2.5 py-1 rounded-full bg-[#FAF4EE] hover:bg-[#F7EAE7] border border-[#E9D9CF] text-[11px] font-bold text-[#4A3934] cursor-pointer"
-                  >
-                    + {p.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <input
-              type="text"
-              value={newFormula}
-              onChange={(e) => setNewFormula(e.target.value)}
-              placeholder={
-                isNails
-                  ? 'Detalles extra (ej. Refuerzo Rubber + Top Coat Glass)'
-                  : 'Fórmula exacta (ej. Base 7.1 + 8.3 · 20 vol · Matiz 9.21)'
-              }
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs font-mono"
-            />
-
-            <input
-              type="text"
-              value={newNotes}
-              onChange={(e) => setNewNotes(e.target.value)}
-              placeholder="Notas personales para la próxima visita..."
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs"
-            />
-
-            <button type="submit" className="btn-editorial cursor-pointer">
-              <Check size={15} />
-              <span>Guardar en Historial</span>
-            </button>
-          </form>
+          <SessionRecorderForm
+            key={`${client.id}-${activeVertical}`}
+            client={client}
+            isNails={isNails}
+            onSaveSession={handleAddSession}
+          />
 
           {/* Historial */}
           <div className="pearl-card p-5 space-y-3">

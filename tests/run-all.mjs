@@ -20,6 +20,10 @@ import {
   NAIL_SHAPES,
   NAIL_POLISH_COLORS,
 } from '../src/lib/shopUtils.js';
+import {
+  mergeSyncedAppointments,
+  mergeSyncedClients,
+} from '../src/lib/syncService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -307,6 +311,135 @@ await test('8. Super-Admin API accepts lumina-beauty-admin-2026 & kutz-superadmi
   assert.equal(pubPaused.status, 403);
   const pubPausedData = await pubPaused.json();
   assert.equal(pubPausedData.paused, true);
+
+  // Query-param fallback routing (as used by Netlify redirects) + PIN 4-digit validation
+  const badPinRes = await adminHandler(
+    new Request('http://localhost/.netlify/functions/admin?shopSlug=atelier-marfil', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': 'lumina-beauty-admin-2026' },
+      body: JSON.stringify({ pin: '12' }),
+    })
+  );
+  assert.equal(badPinRes.status, 422);
+
+  const reactivateViaQuery = await adminHandler(
+    new Request('http://localhost/.netlify/functions/admin?shopSlug=atelier-marfil&action=status', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': 'lumina-beauty-admin-2026' },
+      body: JSON.stringify({ status: 'active' }),
+    })
+  );
+  assert.equal(reactivateViaQuery.status, 200);
+});
+
+await test('9. Multi-specialist "any" booking assigns free specialist & allows concurrent 2nd booking (not false 409)', async () => {
+  resetMemoryStore();
+  // campodonico-nails has 2 specialists: nails-master (Camila) & spa-specialist (Nadia)
+  const b1 = await bookingHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'appointment',
+        clientName: 'Clienta Uno',
+        clientPhone: '611111111',
+        barberId: 'any',
+        serviceId: 'cn4', // 60m
+        date: '2026-11-23',
+        timeSlot: '10:00',
+      }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(b1.status, 201);
+  const d1 = await b1.json();
+  assert.equal(d1.appointment.barberId, 'nails-master', 'First "any" booking must assign concrete specialist id');
+
+  // Second concurrent booking at 10:00 with "any" must succeed on 2nd specialist (spa-specialist)
+  const b2 = await bookingHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'appointment',
+        clientName: 'Clienta Dos',
+        clientPhone: '622222222',
+        barberId: 'any',
+        serviceId: 'cn6', // 60m
+        date: '2026-11-23',
+        timeSlot: '10:00',
+      }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(b2.status, 201);
+  const d2 = await b2.json();
+  assert.equal(d2.appointment.barberId, 'spa-specialist', 'Second "any" booking must assign 2nd free specialist');
+
+  // Third concurrent booking at 10:00 must fail 409 (both specialists busy)
+  const b3 = await bookingHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'appointment',
+        clientName: 'Clienta Tres',
+        clientPhone: '633333333',
+        barberId: 'any',
+        serviceId: 'cn4',
+        date: '2026-11-23',
+        timeSlot: '10:00',
+      }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(b3.status, 409);
+});
+
+await test('10. walkInOpen=false persists via sync & blocks walkin bookings with 403', async () => {
+  resetMemoryStore();
+  const toggleRes = await syncHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-shop-pin': '2023' },
+      body: JSON.stringify({ action: 'update_shop_schedule', payload: { walkInOpen: false } }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(toggleRes.status, 200);
+
+  const walkinRes = await bookingHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'walkin', clientName: 'Elena', clientPhone: '611222333' }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(walkinRes.status, 403);
+  const walkinData = await walkinRes.json();
+  assert.equal(walkinData.error, 'walkin_closed');
+});
+
+await test('11. Sync merge preserves local demo agenda & VIP clients when server returns empty/partial arrays', () => {
+  const localApts = [
+    { id: 'demo-1', clientName: 'Valeria', isDemo: true },
+    { id: 'demo-2', clientName: 'Deleted', isDemo: true },
+  ];
+  const remoteApts = [{ id: 'qr-live-1', clientName: 'Nueva QR', status: 'pending' }];
+  const mergedApts = mergeSyncedAppointments(remoteApts, localApts, ['demo-2'], []);
+  assert.equal(mergedApts.length, 2);
+  assert.ok(mergedApts.some((a) => a.id === 'qr-live-1'));
+  assert.ok(mergedApts.some((a) => a.id === 'demo-1'));
+  assert.ok(!mergedApts.some((a) => a.id === 'demo-2'));
+
+  const localClients = [
+    { id: 'n-1', name: 'Valeria' },
+    { id: 'n-2', name: 'Lucía' },
+  ];
+  const remoteClients = [{ id: 'c-qr-1', name: 'Clienta QR' }];
+  const mergedClients = mergeSyncedClients(remoteClients, localClients, []);
+  assert.equal(mergedClients.length, 3);
 });
 
 console.log(`\n---------------------------------------------------------------------`);

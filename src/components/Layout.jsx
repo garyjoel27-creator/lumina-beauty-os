@@ -52,7 +52,6 @@ const Layout = () => {
   const [isCmdKOpen, setIsCmdKOpen] = useState(false);
   const [isQRPosterOpen, setIsQRPosterOpen] = useState(false);
   const [isPinLocked, setIsPinLocked] = useState(false);
-  const [walkInOpen, setWalkInOpen] = useState(true);
   const [wallpaperIdx, setWallpaperIdx] = useState(() => {
     try {
       const saved = localStorage.getItem('lumina_beauty_wallpaper_idx');
@@ -71,19 +70,26 @@ const Layout = () => {
     switchShop,
     needsPinSync,
     verifyAndUnlockShopPin,
+    toggleWalkInOpen,
   } = useShop();
+  const walkInOpen = activeShop?.walkInOpen !== false;
   const navigate = useNavigate();
   const location = useLocation();
 
   const handleSwitchEdition = (edition) => {
     soundFx.playClick();
     soundFx.triggerHaptic(12);
+    const nextIdx = edition === 'peluqueria' ? 1 : 0;
+    setWallpaperIdx(nextIdx);
+    try {
+      localStorage.setItem('lumina_beauty_wallpaper_idx', String(nextIdx));
+    } catch {
+      // ignore
+    }
     if (edition === 'peluqueria') {
       switchShop('peluqueria-estetica', '1234');
-      setWallpaperIdx(1);
     } else {
       switchShop('campodonico-nails', '2023');
-      setWallpaperIdx(0);
     }
   };
 
@@ -195,7 +201,7 @@ const Layout = () => {
               type="button"
               onClick={() => {
                 soundFx.playClick();
-                setWalkInOpen(!walkInOpen);
+                toggleWalkInOpen();
               }}
               className={`mt-3 w-full px-3.5 py-2.5 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
                 walkInOpen

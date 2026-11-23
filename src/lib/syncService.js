@@ -7,7 +7,7 @@
 import {
   SHOP_CAMPODONICO_NAILS_CONFIG,
   SHOP_PELUQUERIA_ESTETICA_CONFIG,
-} from './shopUtils';
+} from './shopUtils.js';
 
 export const SYNC_STATUS = {
   IDLE: 'idle',
@@ -43,7 +43,80 @@ export function getShopStorageKeys(shopSlug = 'campodonico-nails') {
     verifiedPin: `${STORAGE_PREFIX}_${safeSlug}_verified_pin`,
     sales: `${STORAGE_PREFIX}_${safeSlug}_sales`,
     reviews: `${STORAGE_PREFIX}_${safeSlug}_reviews`,
+    deletedIds: `${STORAGE_PREFIX}_${safeSlug}_deleted_ids`,
   };
+}
+
+export function getLocalDeletedIds(shopSlug, customStorage) {
+  const storage = getEffectiveStorage(customStorage);
+  const keys = getShopStorageKeys(shopSlug);
+  try {
+    const raw = storage.getItem(keys.deletedIds);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function recordLocalDeletion(shopSlug, id, customStorage) {
+  if (!id) return;
+  const storage = getEffectiveStorage(customStorage);
+  const keys = getShopStorageKeys(shopSlug);
+  const existing = getLocalDeletedIds(shopSlug, storage);
+  const strId = String(id);
+  if (!existing.includes(strId)) {
+    try {
+      storage.setItem(keys.deletedIds, JSON.stringify([...existing.slice(-200), strId]));
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function mergeSyncedAppointments(remoteApts, localApts, deletedIds = [], outbox = []) {
+  const deletedSet = new Set(deletedIds.map(String));
+  const pendingAddIds = new Set(
+    (outbox || [])
+      .filter((item) => item?.action === 'add_appointment' && item?.payload?.id)
+      .map((item) => String(item.payload.id))
+  );
+  const remoteList = Array.isArray(remoteApts) ? remoteApts : [];
+  const localList = Array.isArray(localApts) ? localApts : [];
+
+  const byId = new Map();
+  for (const apt of remoteList) {
+    if (!apt?.id || deletedSet.has(String(apt.id))) continue;
+    byId.set(String(apt.id), apt);
+  }
+  for (const localApt of localList) {
+    if (!localApt?.id || deletedSet.has(String(localApt.id))) continue;
+    const idStr = String(localApt.id);
+    if (!byId.has(idStr) && (localApt.isDemo || pendingAddIds.has(idStr))) {
+      byId.set(idStr, localApt);
+    }
+  }
+  return Array.from(byId.values());
+}
+
+export function mergeSyncedClients(remoteClients, localClients, deletedIds = []) {
+  const deletedSet = new Set(deletedIds.map(String));
+  const remoteList = Array.isArray(remoteClients) ? remoteClients : [];
+  const localList = Array.isArray(localClients) ? localClients : [];
+
+  const byId = new Map();
+  for (const c of remoteList) {
+    if (!c?.id || deletedSet.has(String(c.id))) continue;
+    byId.set(String(c.id), c);
+  }
+  for (const c of localList) {
+    if (!c?.id || deletedSet.has(String(c.id))) continue;
+    const idStr = String(c.id);
+    if (!byId.has(idStr)) {
+      byId.set(idStr, c);
+    }
+  }
+  return Array.from(byId.values());
 }
 
 export function normalizePhoneNumber(phone) {
@@ -289,13 +362,26 @@ export class SyncEngine {
       if (data && data.success) {
         this._emit('auth', false);
         const currentLocal = loadLocalShopState(this.shopSlug, this.storage);
+        const deletedIds = getLocalDeletedIds(this.shopSlug, this.storage);
+        const pendingOutbox = getOutbox(this.shopSlug, this.storage);
+        const mergedAppointments = mergeSyncedAppointments(
+          data.appointments,
+          currentLocal.appointments,
+          deletedIds,
+          pendingOutbox
+        );
+        const mergedClients = mergeSyncedClients(
+          data.clients,
+          currentLocal.clients,
+          deletedIds
+        );
         saveLocalShopState(
           this.shopSlug,
           {
             config: data.config ? { ...data.config, pin: this.pin } : currentLocal.config,
-            appointments: Array.isArray(data.appointments) ? data.appointments : currentLocal.appointments,
-            queue: Array.isArray(data.queue) ? data.queue : currentLocal.queue,
-            clients: Array.isArray(data.clients) && data.clients.length > 0 ? data.clients : currentLocal.clients,
+            appointments: mergedAppointments,
+            queue: Array.isArray(data.queue) && data.queue.length > 0 ? data.queue : currentLocal.queue,
+            clients: mergedClients,
             lastSync: Date.now(),
           },
           this.storage

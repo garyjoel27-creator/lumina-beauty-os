@@ -94,6 +94,12 @@ export default async function handler(request, context) {
         { status: 422, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
       );
     }
+    if (!/^\d{4}$/.test(String(pin).trim())) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'invalid_pin', message: 'El PIN debe tener exactamente 4 dígitos numéricos.' }),
+        { status: 422, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
 
     const cleanSlug = String(slug).toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
     const index = await getShopsIndex();
@@ -171,12 +177,13 @@ export default async function handler(request, context) {
     let targetSlug = context?.params?.shopSlug;
     if (!targetSlug) {
       const match = url.pathname.match(/\/api\/admin\/shops\/([^/]+)/);
-      targetSlug = match ? match[1] : null;
+      targetSlug = match ? match[1] : url.searchParams.get('shopSlug') || url.searchParams.get('shop');
     }
     if (targetSlug === 'status') {
       const parts = url.pathname.split('/').filter(Boolean);
       const idx = parts.indexOf('shops');
       if (idx !== -1 && parts[idx + 1] && parts[idx + 1] !== 'status') targetSlug = parts[idx + 1];
+      else targetSlug = url.searchParams.get('shopSlug') || url.searchParams.get('shop');
     }
 
     if (!targetSlug) {
@@ -202,6 +209,13 @@ export default async function handler(request, context) {
         status: 400,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
+    }
+
+    if (patch.pin !== undefined && !/^\d{4}$/.test(String(patch.pin).trim())) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'invalid_pin', message: 'El PIN debe tener exactamente 4 dígitos numéricos.' }),
+        { status: 422, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      );
     }
 
     const mergedSchedule = patch.schedule

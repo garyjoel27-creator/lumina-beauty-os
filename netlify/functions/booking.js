@@ -447,9 +447,14 @@ export default async function handler(request, context) {
         }
 
         const holdDurationMs = 10 * 60 * 1000;
-        const resolvedId = barberId && barberId !== 'any' ? barberId : specialists.length === 1 ? specialists[0].id : 'any';
+        const resolvedId =
+          barberId && barberId !== 'any'
+            ? barberId
+            : assigned?.id || specialists[0]?.id || 'any';
         const resolvedName =
-          body.barberName || assigned?.name || (resolvedId === 'any' ? 'Cualquier Especialista' : resolvedId);
+          barberId && barberId !== 'any'
+            ? body.barberName || assigned?.name || resolvedId
+            : assigned?.name || specialists[0]?.name || 'Especialista disponible';
 
         const newAppointment = {
           id: `apt-${now}-${Math.random().toString(36).slice(2, 7)}`,
@@ -493,6 +498,16 @@ export default async function handler(request, context) {
     }
 
     if (type === 'walkin') {
+      if (shop.walkInOpen === false) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'walkin_closed',
+            message: 'Este salón atiende actualmente solo con cita previa. Elige día y hora en el calendario.',
+          }),
+          { status: 403, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+        );
+      }
       const { barberId, serviceId } = body;
       return await withShopLock(shopSlug, async () => {
         const queue = await getShopQueue(shopSlug);

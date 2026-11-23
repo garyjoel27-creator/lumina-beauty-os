@@ -32,9 +32,9 @@ const CATEGORY_LABELS = {
   mirada: 'Cejas & Pestañas',
 };
 
-function getNextOpenDates(shop, count = 10) {
+function getNextOpenDates(shop, nowMs, count = 10) {
   const openDays = shop?.schedule?.workDays || [1, 2, 3, 4, 5, 6];
-  const localNow = getShopLocalDateTime(shop, new Date());
+  const localNow = getShopLocalDateTime(shop, new Date(nowMs));
   const [y, m, d] = localNow.isoDate.split('-').map(Number);
   const base = new Date(Date.UTC(y, m - 1, d));
   const list = [];
@@ -75,12 +75,15 @@ const PublicBookingView = () => {
   const shop = remoteShop || activeShop;
   const vertical = getShopVertical(shop, slug);
   const isNails = vertical === 'nails';
+  const walkInAllowed = shop?.walkInOpen !== false;
+  const [nowMs] = useState(() => Date.now());
 
   const services = useMemo(() => shop?.services || [], [shop?.services]);
   const specialists = useMemo(() => shop?.barbers || [], [shop?.barbers]);
-  const upcomingDates = useMemo(() => getNextOpenDates(shop, 10), [shop]);
+  const upcomingDates = useMemo(() => getNextOpenDates(shop, nowMs, 10), [shop, nowMs]);
 
   const [bookingMode, setBookingMode] = useState('appointment'); // appointment | walkin
+  const effectiveBookingMode = walkInAllowed ? bookingMode : 'appointment';
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedServiceId, setSelectedServiceId] = useState('');
   const [selectedBarberId, setSelectedBarberId] = useState('any');
@@ -150,6 +153,7 @@ const PublicBookingView = () => {
   );
 
   // Compute exact available time slots respecting multi-hour service durations (e.g., 90m, 105m, 120m)
+  // and per-specialist concurrency (matching backend booking.js)
   const slots = useMemo(() => {
     if (!selectedDate || !shop) return [];
     const parts = selectedDate.split('-').map(Number);
@@ -161,7 +165,14 @@ const PublicBookingView = () => {
     const closeM = toMins(hbd.closeTime || shop.schedule?.closeTime || '19:30');
     const step = Number(shop.schedule?.slotMinutes || 30);
     const dur = Number(selectedService?.durationMinutes) || 60;
-    const localNow = getShopLocalDateTime(shop, new Date());
+    const localNow = getShopLocalDateTime(shop, new Date(nowMs));
+    const spList = specialists.length > 0 ? specialists : [{ id: 's1' }];
+
+    const overlaps = (b, m, slotEnd) => {
+      const bStart = toMins(b.start);
+      const bEnd = bStart + (Number(b.durationMinutes) || 30);
+      return m < bEnd && slotEnd > bStart;
+    };
 
     const arr = [];
     for (let m = openM; m + dur <= closeM; m += step) {
@@ -171,19 +182,32 @@ const PublicBookingView = () => {
       const isPast = selectedDate === localNow.isoDate && m <= localNow.totalMinutes;
       const slotEnd = m + dur;
 
-      const collides = busyIntervals.some((b) => {
-        if (selectedBarberId !== 'any' && b.barberId !== 'any' && b.barberId !== selectedBarberId) {
-          return false;
+      let collides = false;
+      if (selectedBarberId !== 'any' || spList.length <= 1) {
+        collides = busyIntervals.some((b) => {
+          if (selectedBarberId !== 'any' && b.barberId && b.barberId !== 'any' && b.barberId !== selectedBarberId) {
+            return false;
+          }
+          return overlaps(b, m, slotEnd);
+        });
+      } else {
+        const hasGlobalBlock = busyIntervals.some(
+          (b) => (!b.barberId || b.barberId === 'any') && overlaps(b, m, slotEnd)
+        );
+        if (hasGlobalBlock) {
+          collides = true;
+        } else {
+          const anyFreeSpecialist = spList.some(
+            (sp) => !busyIntervals.some((b) => b.barberId === sp.id && overlaps(b, m, slotEnd))
+          );
+          collides = !anyFreeSpecialist;
         }
-        const bStart = toMins(b.start);
-        const bEnd = bStart + (Number(b.durationMinutes) || 30);
-        return m < bEnd && slotEnd > bStart;
-      });
+      }
 
       arr.push({ time, available: !isPast && !collides });
     }
     return arr;
-  }, [selectedDate, shop, selectedService, busyIntervals, selectedBarberId]);
+  }, [selectedDate, shop, selectedService, busyIntervals, selectedBarberId, specialists, nowMs]);
 
   useEffect(() => {
     const valid = slots.find((s) => s.time === selectedSlot && s.available);
@@ -200,7 +224,7 @@ const PublicBookingView = () => {
       setErrorMsg('Por favor indica tu nombre y teléfono WhatsApp.');
       return;
     }
-    if (bookingMode === 'appointment' && !selectedSlot) {
+    if (effectiveBookingMode === 'appointment' && !selectedSlot) {
       setErrorMsg('Selecciona una hora disponible para tu tratamiento.');
       return;
     }
@@ -212,7 +236,7 @@ const PublicBookingView = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: bookingMode,
+          type: effectiveBookingMode,
           clientName: clientName.trim(),
           clientPhone: clientPhone.trim(),
           serviceId: selectedService?.id,
@@ -220,7 +244,7 @@ const PublicBookingView = () => {
           durationMinutes: selectedService?.durationMinutes,
           price: selectedService?.price,
           barberId: selectedBarberId,
-          barberName: spObj?.name || 'Cualquier Especialista',
+          barberName: selectedBarberId !== 'any' ? spObj?.name || '' : '',
           date: selectedDate,
           timeSlot: selectedSlot,
           notes: notes.trim(),
@@ -231,11 +255,11 @@ const PublicBookingView = () => {
         setErrorMsg(data?.message || 'No pudimos completar la reserva. Prueba otro horario.');
       } else {
         setConfirmation({
-          mode: bookingMode,
+          mode: effectiveBookingMode,
           serviceName: selectedService?.name,
           date: selectedDate,
           timeSlot: selectedSlot,
-          specialist: spObj?.name || 'Especialista disponible',
+          specialist: data?.appointment?.barberName || spObj?.name || 'Especialista disponible',
           message: data.message,
           position: data.position,
         });
@@ -243,7 +267,7 @@ const PublicBookingView = () => {
     } catch {
       // Offline graceful confirmation
       setConfirmation({
-        mode: bookingMode,
+        mode: effectiveBookingMode,
         serviceName: selectedService?.name,
         date: selectedDate,
         timeSlot: selectedSlot,
@@ -363,29 +387,31 @@ const PublicBookingView = () => {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Selector Modo */}
-            <div className="pearl-card p-1.5 grid grid-cols-2 gap-1.5">
+            <div className={`pearl-card p-1.5 grid ${walkInAllowed ? 'grid-cols-2' : 'grid-cols-1'} gap-1.5`}>
               <button
                 type="button"
                 onClick={() => setBookingMode('appointment')}
                 className={`py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
-                  bookingMode === 'appointment'
+                  effectiveBookingMode === 'appointment'
                     ? 'bg-gradient-to-r from-[#C87A72] to-[#B86566] text-white shadow-sm'
                     : 'text-[#6E5A54]'
                 }`}
               >
-                <Calendar size={14} /> Elegir Día y Hora
+                <Calendar size={14} /> Elegir Día y Hora {!walkInAllowed && '· Solo Cita Previa'}
               </button>
-              <button
-                type="button"
-                onClick={() => setBookingMode('walkin')}
-                className={`py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
-                  bookingMode === 'walkin'
-                    ? 'bg-gradient-to-r from-[#C59B5F] to-[#B86566] text-white shadow-sm'
-                    : 'text-[#6E5A54]'
-                }`}
-              >
-                <Clock size={14} /> Turno Express ({queueInfo.count} espera)
-              </button>
+              {walkInAllowed && (
+                <button
+                  type="button"
+                  onClick={() => setBookingMode('walkin')}
+                  className={`py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                    effectiveBookingMode === 'walkin'
+                      ? 'bg-gradient-to-r from-[#C59B5F] to-[#B86566] text-white shadow-sm'
+                      : 'text-[#6E5A54]'
+                  }`}
+                >
+                  <Clock size={14} /> Turno Express ({queueInfo.count} espera)
+                </button>
+              )}
             </div>
 
             {/* 1. Carta de Tratamientos con Filtros por Categoría */}
@@ -442,7 +468,7 @@ const PublicBookingView = () => {
             </div>
 
             {/* 2. Especialista + Fecha y Hora */}
-            {bookingMode === 'appointment' && (
+            {effectiveBookingMode === 'appointment' && (
               <div className="pearl-card p-5 space-y-4">
                 <h2 className="text-xl font-serif font-bold text-[#2A201D]">2. Especialista, Día y Hora</h2>
 
@@ -529,7 +555,7 @@ const PublicBookingView = () => {
             {/* 3. Tus Datos */}
             <div className="pearl-card p-5 space-y-3.5">
               <h2 className="text-xl font-serif font-bold text-[#2A201D]">
-                {bookingMode === 'appointment' ? '3. Tus Datos para Confirmar' : '2. Tus Datos'}
+                {effectiveBookingMode === 'appointment' ? '3. Tus Datos para Confirmar' : '2. Tus Datos'}
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <input
@@ -576,7 +602,7 @@ const PublicBookingView = () => {
                 <span>
                   {submitting
                     ? 'Enviando solicitud...'
-                    : bookingMode === 'appointment'
+                    : effectiveBookingMode === 'appointment'
                     ? `Reservar ${selectedService?.name || ''} · ${selectedSlot || ''}`
                     : 'Apuntarme al Turno Express'}
                 </span>

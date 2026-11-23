@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useShop } from './ShopContext';
-import { dispatchSalonAction, loadLocalShopState, saveLocalShopState } from '../lib/syncService';
+import { dispatchSalonAction, loadLocalShopState, saveLocalShopState, recordLocalDeletion } from '../lib/syncService';
 import { buildWhatsAppUrl } from '../lib/shopUtils';
 
 const ClientContext = createContext();
@@ -380,6 +380,7 @@ export function ClientProvider({ children }) {
   const deleteClient = useCallback(
     (clientId) => {
       const next = clients.filter((c) => String(c.id) !== String(clientId));
+      recordLocalDeletion(activeShopSlug, clientId);
       persistClients(next);
       dispatchSalonAction(activeShopSlug, resolvedPin, 'delete_client', { clientId });
     },

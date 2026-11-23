@@ -4,7 +4,7 @@ import { NAIL_SHAPES, NAIL_POLISH_COLORS, COLORIMETRY_PRESETS } from '../lib/sho
 import { NailShapeIcon, NailColorSwatch } from './ClientBentoCard';
 import { soundFx } from '../lib/soundFx';
 
-const ClientModal = ({ isOpen, onClose, onSave, vertical = 'nails', initialClient = null }) => {
+const ClientModalForm = ({ onClose, onSave, vertical = 'nails', initialClient = null }) => {
   const isNails = vertical === 'nails';
 
   const [name, setName] = useState(initialClient?.name || '');
@@ -20,8 +20,6 @@ const ClientModal = ({ isOpen, onClose, onSave, vertical = 'nails', initialClien
   const [notes, setNotes] = useState(initialClient?.treatments?.[0]?.notes || '');
   const [bonoTitle, setBonoTitle] = useState(initialClient?.bonos?.[0]?.title || '');
   const [bonoTotal, setBonoTotal] = useState(initialClient?.bonos?.[0]?.total || 4);
-
-  if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -303,6 +301,20 @@ const ClientModal = ({ isOpen, onClose, onSave, vertical = 'nails', initialClien
         </form>
       </div>
     </div>
+  );
+};
+
+const ClientModal = ({ isOpen, onClose, onSave, vertical = 'nails', initialClient = null }) => {
+  if (!isOpen) return null;
+  const formKey = `${initialClient?.id || 'new'}-${vertical}`;
+  return (
+    <ClientModalForm
+      key={formKey}
+      onClose={onClose}
+      onSave={onSave}
+      vertical={vertical}
+      initialClient={initialClient}
+    />
   );
 };
 

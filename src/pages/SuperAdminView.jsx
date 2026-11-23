@@ -43,13 +43,14 @@ const SuperAdminView = () => {
   });
   const [statusMsg, setStatusMsg] = useState('');
   const [editingShop, setEditingShop] = useState(null);
+  const [slugTouched, setSlugTouched] = useState(false);
 
   const handleUnlock = async (e) => {
     e.preventDefault();
     setAuthError('');
     const key = adminKey.trim();
     if (!VALID_LOCAL_KEYS.has(key)) {
-      setAuthError('Clave maestra no válida. Usa lumina-beauty-admin-2026 o kutz-superadmin-2026.');
+      setAuthError('Clave maestra incorrecta. Verifica tus credenciales de Super-Admin.');
       return;
     }
     const res = await refreshShops(key);
@@ -83,6 +84,7 @@ const SuperAdminView = () => {
     if (res?.success) {
       setStatusMsg(`✅ Salón "${newForm.name}" creado con slug /?shop=${cleanSlug}`);
       setNewForm({ name: '', slug: '', vertical: 'nails', pin: '2026', phone: '', address: '', instagramSalon: '' });
+      setSlugTouched(false);
     } else {
       setStatusMsg(`⚠️ ${res?.error || 'Error al crear salón'}`);
     }
@@ -91,13 +93,18 @@ const SuperAdminView = () => {
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!editingShop) return;
+    if (!/^\d{4}$/.test(String(editingShop.pin || '').trim())) {
+      setStatusMsg('⚠️ El PIN del salón debe tener exactamente 4 dígitos numéricos.');
+      return;
+    }
     const res = await updateShop(
       editingShop.slug,
       {
         name: editingShop.name,
-        pin: editingShop.pin,
+        pin: String(editingShop.pin).trim(),
         phone: editingShop.phone,
         address: editingShop.address,
+        instagramSalon: String(editingShop.instagramSalon || '').replace(/^@/, ''),
         vertical: editingShop.vertical,
       },
       adminKey.trim()
@@ -105,6 +112,8 @@ const SuperAdminView = () => {
     if (res?.success) {
       setEditingShop(null);
       setStatusMsg(`✅ Salón "${editingShop.name}" actualizado.`);
+    } else {
+      setStatusMsg(`⚠️ ${res?.error || 'No se pudo actualizar el salón'}`);
     }
   };
 
@@ -129,7 +138,7 @@ const SuperAdminView = () => {
             type="password"
             value={adminKey}
             onChange={(e) => setAdminKey(e.target.value)}
-            placeholder="Clave maestra (ej. lumina-beauty-admin-2026)"
+            placeholder="Introduce la clave maestra de Super-Admin"
             className="w-full px-4 py-3 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-sm"
             required
           />
@@ -185,7 +194,7 @@ const SuperAdminView = () => {
                 setNewForm((f) => ({
                   ...f,
                   name: e.target.value,
-                  slug: f.slug ? f.slug : normalizeShopSlug(e.target.value),
+                  slug: slugTouched ? f.slug : normalizeShopSlug(e.target.value),
                 }))
               }
               placeholder="Nombre del salón (ej. Studio Rose)"
@@ -195,7 +204,10 @@ const SuperAdminView = () => {
               type="text"
               required
               value={newForm.slug}
-              onChange={(e) => setNewForm((f) => ({ ...f, slug: normalizeShopSlug(e.target.value) }))}
+              onChange={(e) => {
+                setSlugTouched(Boolean(e.target.value.trim()));
+                setNewForm((f) => ({ ...f, slug: normalizeShopSlug(e.target.value) }));
+              }}
               placeholder="slug-url (ej. studio-rose)"
               className="px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs font-mono"
             />
@@ -331,6 +343,21 @@ const SuperAdminView = () => {
                 onChange={(e) => setEditingShop((p) => ({ ...p, address: e.target.value }))}
                 className="w-full px-3 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs"
                 placeholder="Dirección"
+              />
+              <select
+                value={editingShop.vertical || 'nails'}
+                onChange={(e) => setEditingShop((p) => ({ ...p, vertical: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs font-bold"
+              >
+                <option value="nails">💅 Uñas, Manicura &amp; Pedicura</option>
+                <option value="peluqueria">💇‍♀️ Peluquería &amp; Estética (Sin Uñas)</option>
+              </select>
+              <input
+                type="text"
+                value={editingShop.instagramSalon || ''}
+                onChange={(e) => setEditingShop((p) => ({ ...p, instagramSalon: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs"
+                placeholder="Instagram (sin @)"
               />
               <button type="submit" className="btn-editorial w-full py-2.5 cursor-pointer">
                 <Check size={15} /> Guardar Cambios
