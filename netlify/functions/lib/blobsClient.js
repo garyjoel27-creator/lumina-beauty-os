@@ -1,4 +1,5 @@
 import { getStore } from '@netlify/blobs';
+import crypto from 'node:crypto';
 
 const memoryStore = new Map();
 
@@ -402,4 +403,70 @@ export async function getShopClients(shopSlug) {
 export async function setShopClients(shopSlug, clients) {
   const store = getBeautyStore();
   await store.setJSON(`shops/${shopSlug}/clients`, Array.isArray(clients) ? clients : []);
+}
+
+export function hashClientIp(request) {
+  let rawIp = 'unknown';
+  try {
+    if (request?.headers && typeof request.headers.get === 'function') {
+      const nfIp = request.headers.get('x-nf-client-connection-ip');
+      const xff = request.headers.get('x-forwarded-for');
+      const clientIp = request.headers.get('client-ip');
+      rawIp = (nfIp || (xff ? xff.split(',')[0] : '') || clientIp || 'unknown').trim();
+    }
+  } catch {
+    rawIp = 'unknown';
+  }
+  return crypto.createHash('sha256').update(String(rawIp || 'unknown')).digest('hex').slice(0, 16);
+}
+
+export async function getRateLimitState(shopSlug, ipHash) {
+  const store = getBeautyStore();
+  return await store.getJSON(`ratelimit_${shopSlug}_${ipHash}`);
+}
+
+export async function setRateLimitState(shopSlug, ipHash, state) {
+  const store = getBeautyStore();
+  await store.setJSON(`ratelimit_${shopSlug}_${ipHash}`, state);
+}
+
+export async function clearRateLimitState(shopSlug, ipHash) {
+  const store = getBeautyStore();
+  await store.delete(`ratelimit_${shopSlug}_${ipHash}`);
+}
+
+export async function getAuditLog(shopSlug) {
+  const store = getBeautyStore();
+  const entries = await store.getJSON(`audit_${shopSlug}`);
+  return Array.isArray(entries) ? entries : [];
+}
+
+export async function appendAuditLog(shopSlug, action, detail = {}) {
+  const store = getBeautyStore();
+  const key = `audit_${shopSlug}`;
+  const existing = await store.getJSON(key);
+  const list = Array.isArray(existing) ? existing : [];
+  const safeDetail = detail && typeof detail === 'object' ? { ...detail } : { info: String(detail || '') };
+  delete safeDetail.pin;
+  delete safeDetail.providedPin;
+  delete safeDetail.password;
+  const entry = {
+    ts: new Date().toISOString(),
+    action: String(action || 'unknown'),
+    detail: safeDetail,
+  };
+  const next = [...list, entry].slice(-100);
+  await store.setJSON(key, next);
+  return entry;
+}
+
+export async function getShopSales(shopSlug) {
+  const store = getBeautyStore();
+  const data = await store.getJSON(`shops/${shopSlug}/sales`);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function setShopSales(shopSlug, sales) {
+  const store = getBeautyStore();
+  await store.setJSON(`shops/${shopSlug}/sales`, Array.isArray(sales) ? sales.slice(0, 500) : []);
 }

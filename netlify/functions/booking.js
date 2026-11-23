@@ -319,6 +319,27 @@ export default async function handler(request, context) {
       );
     }
 
+    if (body.rgpdConsent?.acceptedPrivacy !== true) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'rgpd_consent_required',
+          message: 'Debes aceptar la política de privacidad para reservar.',
+        }),
+        { status: 422, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
+
+    const rgpdConsentRecord = {
+      acceptedPrivacy: true,
+      acceptedWhatsapp: Boolean(body.rgpdConsent?.acceptedWhatsapp),
+      acceptedAt:
+        typeof body.rgpdConsent?.acceptedAt === 'string' && body.rgpdConsent.acceptedAt
+          ? body.rgpdConsent.acceptedAt
+          : new Date().toISOString(),
+      policyVersion: String(body.rgpdConsent?.policyVersion || '2026.1'),
+    };
+
     const normalizedClientPhone = normalizePhone(clientPhone);
 
     if (type === 'appointment') {
@@ -475,6 +496,7 @@ export default async function handler(request, context) {
           time: slotTime,
           indicativeStyle: indicativeStyle || '',
           notes: notes || '',
+          rgpdConsent: rgpdConsentRecord,
           status: 'pending',
           createdAt: now,
           holdExpiresAt: now + holdDurationMs,
@@ -527,6 +549,7 @@ export default async function handler(request, context) {
           barber: barberId || (shop.barbers?.length === 1 ? shop.barbers[0].name : 'Cualquier Especialista'),
           service: serviceId || shop.services?.[0]?.name || 'Servicio Express',
           indicativeStyle: indicativeStyle || '',
+          rgpdConsent: rgpdConsentRecord,
           position,
           waitMinutes,
           status: 'waiting',

@@ -11,8 +11,11 @@ import {
   ArrowLeft,
   Check,
   X,
+  Copy,
+  Scale,
 } from 'lucide-react';
 import { useShop } from '../context/ShopContext';
+import LegalComplianceModal from '../components/LegalComplianceModal';
 import {
   SHOP_CAMPODONICO_NAILS_CONFIG,
   SHOP_PELUQUERIA_ESTETICA_CONFIG,
@@ -44,6 +47,21 @@ const SuperAdminView = () => {
   const [statusMsg, setStatusMsg] = useState('');
   const [editingShop, setEditingShop] = useState(null);
   const [slugTouched, setSlugTouched] = useState(false);
+  const [copiedSlug, setCopiedSlug] = useState('');
+  const [dpaShop, setDpaShop] = useState(null);
+
+  const handleCopyCleanPanelUrl = async (slug) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://lumina-beauty-gary.netlify.app';
+    // Clean URL omitting secret PIN query parameter
+    const url = `${origin}/?shop=${encodeURIComponent(slug)}`;
+    try {
+      await navigator.clipboard?.writeText(url);
+    } catch {
+      // ignore
+    }
+    setCopiedSlug(slug);
+    setTimeout(() => setCopiedSlug(''), 2000);
+  };
 
   const handleUnlock = async (e) => {
     e.preventDefault();
@@ -277,9 +295,25 @@ const SuperAdminView = () => {
                   <a href={`/?shop=${s.slug}`} className="btn-silk !py-1.5 !px-3 !text-xs">
                     <ExternalLink size={13} /> Panel
                   </a>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyCleanPanelUrl(s.slug)}
+                    className="btn-silk !py-1.5 !px-3 !text-xs cursor-pointer"
+                    title="Copiar URL limpia del panel privado (sin PIN en la URL)"
+                  >
+                    {copiedSlug === s.slug ? <Check size={13} className="text-[#5C8A74]" /> : <Copy size={13} />}
+                    <span>{copiedSlug === s.slug ? 'Copiado' : 'Link Panel'}</span>
+                  </button>
                   <a href={`/r/${s.slug}`} target="_blank" rel="noopener noreferrer" className="btn-silk !py-1.5 !px-3 !text-xs">
                     <ExternalLink size={13} /> Portal QR
                   </a>
+                  <button
+                    type="button"
+                    onClick={() => setDpaShop(s)}
+                    className="btn-silk !py-1.5 !px-3 !text-xs cursor-pointer"
+                  >
+                    <Scale size={13} className="text-[#C87A72]" /> DPA Art. 28
+                  </button>
                   <button
                     type="button"
                     onClick={() => setEditingShop({ ...s })}
@@ -366,6 +400,15 @@ const SuperAdminView = () => {
           </div>
         )}
       </div>
+
+      <LegalComplianceModal
+        isOpen={Boolean(dpaShop)}
+        onClose={() => setDpaShop(null)}
+        shop={dpaShop}
+        shopSlug={dpaShop?.slug || 'campodonico-nails'}
+        publicOnly={false}
+        initialTab="dpa"
+      />
     </div>
   );
 };

@@ -7,9 +7,20 @@ import {
   setShopQueue,
   getShopClients,
   setShopClients,
+  getShopSales,
+  setShopSales,
+  hashClientIp,
+  getRateLimitState,
+  setRateLimitState,
+  clearRateLimitState,
+  appendAuditLog,
   normalizePhone,
   withShopLock,
 } from './lib/blobsClient.js';
+
+const PIN_MAX_FAILED_ATTEMPTS = 5;
+const PIN_LOCKOUT_SECONDS = 900; // 15 minutes
+const PIN_LOCKOUT_MS = PIN_LOCKOUT_SECONDS * 1000;
 
 export const config = {
   path: '/api/shops/:shopSlug/sync',
@@ -59,12 +70,88 @@ export default async function handler(request, context) {
     });
   }
 
+  // --- PIN AUTHENTICATION WITH ANTI BRUTE-FORCE RATE LIMITING (5 fails -> 15 min block) ---
+  const ipHash = hashClientIp(request);
+  const authNow = Date.now();
+  const rateLimitState = await getRateLimitState(shopSlug, ipHash);
+
+  if (rateLimitState?.blockedUntil && rateLimitState.blockedUntil > authNow) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((rateLimitState.blockedUntil - authNow) / 1000));
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: 'too_many_attempts',
+        message: 'Demasiados intentos fallidos. Espera 15 minutos antes de volver a intentarlo.',
+        retryAfterSeconds,
+      }),
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Retry-After': String(retryAfterSeconds),
+        },
+      }
+    );
+  }
+
   const providedPin = request.headers.get('x-shop-pin') || url.searchParams.get('pin');
   if (!providedPin || String(providedPin) !== String(shop.pin)) {
+    const prevAttempts =
+      rateLimitState && (!rateLimitState.blockedUntil || rateLimitState.blockedUntil <= authNow)
+        ? Number(rateLimitState.attempts) || 0
+        : 0;
+    const nextAttempts = prevAttempts + 1;
+
+    if (nextAttempts >= PIN_MAX_FAILED_ATTEMPTS) {
+      const blockedUntil = authNow + PIN_LOCKOUT_MS;
+      await setRateLimitState(shopSlug, ipHash, {
+        attempts: nextAttempts,
+        blockedUntil,
+        updatedAt: authNow,
+      });
+      await appendAuditLog(shopSlug, 'pin_lockout', {
+        ipHash,
+        attempts: nextAttempts,
+        lockDurationSeconds: PIN_LOCKOUT_SECONDS,
+      });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'too_many_attempts',
+          message: 'Demasiados intentos fallidos. Espera 15 minutos antes de volver a intentarlo.',
+          retryAfterSeconds: PIN_LOCKOUT_SECONDS,
+        }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Retry-After': String(PIN_LOCKOUT_SECONDS),
+          },
+        }
+      );
+    }
+
+    await setRateLimitState(shopSlug, ipHash, {
+      attempts: nextAttempts,
+      blockedUntil: null,
+      updatedAt: authNow,
+    });
+
     return new Response(
-      JSON.stringify({ success: false, error: 'unauthorized', message: 'PIN incorrecto para este salón.' }),
+      JSON.stringify({
+        success: false,
+        error: 'unauthorized',
+        message: 'PIN incorrecto para este salón.',
+        remainingAttempts: Math.max(0, PIN_MAX_FAILED_ATTEMPTS - nextAttempts),
+      }),
       { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
     );
+  }
+
+  if (rateLimitState && (rateLimitState.attempts > 0 || rateLimitState.blockedUntil)) {
+    await clearRateLimitState(shopSlug, ipHash);
   }
 
   const { pin: _omittedPin, ...safeShopConfig } = shop;
@@ -73,6 +160,7 @@ export default async function handler(request, context) {
     let appointments = await getShopAppointments(shopSlug);
     const queue = await getShopQueue(shopSlug);
     const clients = await getShopClients(shopSlug);
+    const dailySales = await getShopSales(shopSlug);
     const now = Date.now();
 
     let hasExpiredChanges = false;
@@ -108,6 +196,7 @@ export default async function handler(request, context) {
         appointments: enrichedAppointments,
         queue,
         clients,
+        dailySales,
       }),
       {
         status: 200,
@@ -341,6 +430,11 @@ export default async function handler(request, context) {
         if (idx !== -1) clients[idx] = { ...clients[idx], ...clientObj };
         else clients.unshift(clientObj);
         await setShopClients(shopSlug, clients);
+        await appendAuditLog(shopSlug, 'upsert_client', {
+          clientId: String(clientObj.id),
+          consentSigned: Boolean(clientObj.consent?.signed),
+          revokedAt: clientObj.consent?.revokedAt || null,
+        });
         return new Response(
           JSON.stringify({ success: true, action: 'upsert_client', client: clientObj }),
           { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
@@ -353,8 +447,36 @@ export default async function handler(request, context) {
           shopSlug,
           clients.filter((c) => String(c.id) !== String(clientId))
         );
+        await appendAuditLog(shopSlug, 'delete_client', {
+          clientId: String(clientId || ''),
+        });
         return new Response(
           JSON.stringify({ success: true, action: 'delete_client', clientId }),
+          { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+        );
+      }
+
+      if (action === 'record_sale') {
+        const saleObj = payload?.sale || payload;
+        if (!saleObj || !saleObj.id) {
+          return new Response(JSON.stringify({ success: false, error: 'missing_sale_id' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        const sales = await getShopSales(shopSlug);
+        const normalizedSale = {
+          ...saleObj,
+          id: String(saleObj.id),
+          shopSlug,
+          timestamp: Number(saleObj.timestamp) || Date.now(),
+        };
+        const existingIdx = sales.findIndex((s) => String(s.id) === normalizedSale.id);
+        if (existingIdx !== -1) sales[existingIdx] = { ...sales[existingIdx], ...normalizedSale };
+        else sales.unshift(normalizedSale);
+        await setShopSales(shopSlug, sales);
+        return new Response(
+          JSON.stringify({ success: true, action: 'record_sale', sale: normalizedSale }),
           { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
         );
       }
@@ -379,6 +501,10 @@ export default async function handler(request, context) {
           updatedAt: Date.now(),
         };
         await setShopConfig(shopSlug, updatedShop);
+        await appendAuditLog(shopSlug, 'update_shop_schedule', {
+          walkInOpen: updatedShop.walkInOpen !== false,
+          servicesCount: Array.isArray(updatedShop.services) ? updatedShop.services.length : 0,
+        });
         const { pin: _p, ...safeUpdated } = updatedShop;
         return new Response(
           JSON.stringify({ success: true, action: 'update_shop_schedule', config: safeUpdated }),

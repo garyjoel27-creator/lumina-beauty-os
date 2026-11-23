@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Check, Palette, FlaskConical } from 'lucide-react';
+import { X, Sparkles, Check, Palette, FlaskConical, ShieldCheck } from 'lucide-react';
 import { NAIL_SHAPES, NAIL_POLISH_COLORS, COLORIMETRY_PRESETS } from '../lib/shopUtils';
 import { NailShapeIcon, NailColorSwatch } from './ClientBentoCard';
 import { soundFx } from '../lib/soundFx';
@@ -292,6 +292,13 @@ const ClientModalForm = ({ onClose, onSave, vertical = 'nails', initialClient = 
               placeholder="Ej. Prefiere té verde · Le gusta música suave"
               className="w-full px-3.5 py-2 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs text-[#2A201D]"
             />
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#FAF4EE] border border-[#E9D9CF] text-[11px] text-[#4A3934] flex items-start gap-2 leading-relaxed">
+            <ShieldCheck size={15} className="text-[#5C8A74] shrink-0 mt-0.5" />
+            <span>
+              <strong className="text-[#2A201D]">Aviso RGPD (1ª capa · Art. 13 &amp; Art. 9.2.a):</strong> Los datos de contacto, alergias y fórmulas se tratan para la prestación del servicio. Recuerda recoger la <strong>firma RGPD de 4 capas</strong> en la ficha de la clienta.
+            </span>
           </div>
 
           <button type="submit" className="btn-editorial w-full py-3 cursor-pointer">

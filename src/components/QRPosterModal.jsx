@@ -28,9 +28,11 @@ export const SalonPinLockModal = ({
     if (next.length === 4) {
       setChecking(true);
       let ok = false;
+      let errText = '';
       if (onVerifyPin) {
         const res = await onVerifyPin(next);
         ok = Boolean(res?.success);
+        errText = res?.error || '';
       } else {
         ok = next === String(expectedPin);
       }
@@ -41,7 +43,7 @@ export const SalonPinLockModal = ({
         onUnlock?.();
       } else {
         soundFx.playAlert();
-        setErrorMsg('PIN incorrecto. Inténtalo de nuevo.');
+        setErrorMsg(errText || 'PIN incorrecto. Inténtalo de nuevo.');
         setTimeout(() => setDigits(''), 400);
       }
     }

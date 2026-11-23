@@ -123,15 +123,17 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
       if (search) {
         const params = new URLSearchParams(search);
         const urlPin = params.get('pin');
-        if (urlPin && /^\d{4}$/.test(urlPin)) {
-          storage.setItem(`lumina_beauty_${activeShopSlug}_verified_pin`, urlPin);
+        if (urlPin !== null) {
           if (typeof window !== 'undefined' && window.history?.replaceState) {
             params.delete('pin');
             const cleanQuery = params.toString();
             const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ''}${window.location.hash || ''}`;
             window.history.replaceState({}, '', cleanUrl);
           }
-          return urlPin;
+          if (/^\d{4}$/.test(urlPin)) {
+            storage.setItem(`lumina_beauty_${activeShopSlug}_verified_pin`, urlPin);
+            return urlPin;
+          }
         }
       }
       const savedPin = storage.getItem(`lumina_beauty_${activeShopSlug}_verified_pin`);
@@ -495,6 +497,15 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
             }
             setLastSyncTime(Date.now());
             return { success: true };
+          }
+          if (res.status === 429) {
+            const errData = await res.json().catch(() => null);
+            return {
+              success: false,
+              rateLimited: true,
+              retryAfterSeconds: errData?.retryAfterSeconds || 900,
+              error: errData?.message || 'Demasiados intentos fallidos. Espera 15 minutos antes de volver a intentarlo.',
+            };
           }
           if (res.status === 401) return { success: false, error: 'PIN incorrecto para este salón' };
         } catch {

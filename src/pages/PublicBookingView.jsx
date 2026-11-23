@@ -11,8 +11,10 @@ import {
   MessageCircle,
   User,
   AlertCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { useShop } from '../context/ShopContext';
+import LegalComplianceModal from '../components/LegalComplianceModal';
 import {
   buildWhatsAppUrl,
   getShopLocalDateTime,
@@ -92,6 +94,10 @@ const PublicBookingView = () => {
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [notes, setNotes] = useState('');
+  // RGPD 1st-Layer Consent — BOTH UNCHECKED BY DEFAULT
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
+  const [acceptedWhatsapp, setAcceptedWhatsapp] = useState(false);
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [confirmation, setConfirmation] = useState(null);
@@ -228,6 +234,10 @@ const PublicBookingView = () => {
       setErrorMsg('Selecciona una hora disponible para tu tratamiento.');
       return;
     }
+    if (!acceptedPrivacy) {
+      setErrorMsg('Debes aceptar la política de privacidad para reservar.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -248,6 +258,12 @@ const PublicBookingView = () => {
           date: selectedDate,
           timeSlot: selectedSlot,
           notes: notes.trim(),
+          rgpdConsent: {
+            acceptedPrivacy: true,
+            acceptedWhatsapp: Boolean(acceptedWhatsapp),
+            acceptedAt: new Date().toISOString(),
+            policyVersion: '2026.1',
+          },
         }),
       });
       const data = await res.json().catch(() => null);
@@ -378,7 +394,11 @@ const PublicBookingView = () => {
 
             <button
               type="button"
-              onClick={() => setConfirmation(null)}
+              onClick={() => {
+                setConfirmation(null);
+                setAcceptedPrivacy(false);
+                setAcceptedWhatsapp(false);
+              }}
               className="text-xs font-bold text-[#6E5A54] hover:text-[#2A201D] cursor-pointer"
             >
               Hacer otra reserva
@@ -587,6 +607,62 @@ const PublicBookingView = () => {
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs"
               />
 
+              {/* Información Básica RGPD (1ª capa · Art. 13 RGPD) + 2 Checkboxes Desmarcados */}
+              <div
+                data-testid="rgpd-booking-section"
+                className="p-3.5 rounded-2xl bg-[#FAF4EE] border border-[#E9D9CF] space-y-3 text-left"
+              >
+                <div className="p-3 rounded-xl bg-white border border-[#EFE3DB] text-[11px] text-[#4A3934] space-y-1 leading-relaxed">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#B86566] flex items-center gap-1.5">
+                    <ShieldCheck size={13} />
+                    <span>Información básica sobre Protección de Datos (1ª capa · Art. 13 RGPD)</span>
+                  </p>
+                  <p><strong className="text-[#2A201D]">Responsable:</strong> {shop?.name || 'LUMINA BEAUTY'}</p>
+                  <p><strong className="text-[#2A201D]">Finalidad:</strong> Gestión de la cita y atención al cliente.</p>
+                  <p><strong className="text-[#2A201D]">Legitimación:</strong> Ejecución del servicio y consentimiento expreso.</p>
+                  <p><strong className="text-[#2A201D]">Destinatarios:</strong> No cesión a terceros salvo obligación legal; infraestructura cloud segura (Netlify, EU-US Data Privacy Framework).</p>
+                  <p>
+                    <strong className="text-[#2A201D]">Derechos:</strong> Acceso, Rectificación, Supresión, Portabilidad y Oposición ante el establecimiento.{' '}
+                    <button
+                      type="button"
+                      onClick={() => setIsLegalModalOpen(true)}
+                      className="text-[#B86566] underline hover:text-[#2A201D] font-bold cursor-pointer"
+                    >
+                      Ver Política de Privacidad y Aviso Legal
+                    </button>
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2.5 text-xs text-[#2A201D] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={acceptedPrivacy}
+                      onChange={(e) => {
+                        setAcceptedPrivacy(e.target.checked);
+                        if (e.target.checked) setErrorMsg('');
+                      }}
+                      className="mt-0.5 w-4 h-4 accent-[#C87A72] shrink-0 cursor-pointer"
+                    />
+                    <span className="leading-snug">
+                      <strong className="text-[#8E4742]">(Obligatorio)</strong> He leído la información básica de privacidad y acepto el tratamiento de mis datos para gestionar mi cita.
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 text-xs text-[#6E5A54] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={acceptedWhatsapp}
+                      onChange={(e) => setAcceptedWhatsapp(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 accent-[#C87A72] shrink-0 cursor-pointer"
+                    />
+                    <span className="leading-snug">
+                      <strong className="text-[#4A3934]">(Opcional)</strong> Acepto recibir recordatorios de cita o avisos de hueco libre por WhatsApp.
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               {errorMsg && (
                 <div className="p-3 rounded-xl bg-[#FDECEB] border border-[#E8B2AE] text-[#9E3836] text-xs font-bold flex items-center gap-2">
                   <AlertCircle size={14} /> {errorMsg}
@@ -610,7 +686,27 @@ const PublicBookingView = () => {
             </div>
           </form>
         )}
+
+        <div className="mt-8 pt-4 border-t border-[#E9D9CF] text-center text-[11px] text-[#9A847D] flex flex-wrap items-center justify-center gap-2">
+          <span>LUMINA // BEAUTY &amp; SALON · Reserva Online</span>
+          <span>·</span>
+          <button
+            type="button"
+            onClick={() => setIsLegalModalOpen(true)}
+            className="text-[#8E4742] hover:text-[#2A201D] underline font-semibold cursor-pointer"
+          >
+            Política de Privacidad y Aviso Legal
+          </button>
+        </div>
       </div>
+
+      <LegalComplianceModal
+        isOpen={isLegalModalOpen}
+        onClose={() => setIsLegalModalOpen(false)}
+        shop={shop}
+        shopSlug={slug}
+        publicOnly={true}
+      />
     </div>
   );
 };

@@ -8,7 +8,11 @@ import { fileURLToPath } from 'node:url';
 import bookingHandler from '../netlify/functions/booking.js';
 import syncHandler from '../netlify/functions/sync.js';
 import adminHandler from '../netlify/functions/admin.js';
-import { resetMemoryStore, getShopConfig } from '../netlify/functions/lib/blobsClient.js';
+import {
+  resetMemoryStore,
+  getShopConfig,
+  getAuditLog,
+} from '../netlify/functions/lib/blobsClient.js';
 import {
   SHOP_CAMPODONICO_NAILS_CONFIG,
   SHOP_PELUQUERIA_ESTETICA_CONFIG,
@@ -23,7 +27,14 @@ import {
 import {
   mergeSyncedAppointments,
   mergeSyncedClients,
+  mergeSyncedSales,
 } from '../src/lib/syncService.js';
+
+const VALID_RGPD_CONSENT = {
+  acceptedPrivacy: true,
+  acceptedWhatsapp: false,
+  policyVersion: '2026.1',
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -167,6 +178,7 @@ await test('6. Interval Overlap & Closing Boundary Guard for multi-hour beauty s
         serviceId: 'cn2',
         date: '2026-11-23',
         timeSlot: '11:00',
+        rgpdConsent: VALID_RGPD_CONSENT,
       }),
     }),
     { params: { shopSlug: 'campodonico-nails' } }
@@ -186,6 +198,7 @@ await test('6. Interval Overlap & Closing Boundary Guard for multi-hour beauty s
         serviceId: 'cn4',
         date: '2026-11-23',
         timeSlot: '12:00',
+        rgpdConsent: VALID_RGPD_CONSENT,
       }),
     }),
     { params: { shopSlug: 'campodonico-nails' } }
@@ -205,6 +218,7 @@ await test('6. Interval Overlap & Closing Boundary Guard for multi-hour beauty s
         serviceId: 'pe3',
         date: '2026-11-23',
         timeSlot: '18:30',
+        rgpdConsent: VALID_RGPD_CONSENT,
       }),
     }),
     { params: { shopSlug: 'peluqueria-estetica' } }
@@ -347,6 +361,7 @@ await test('9. Multi-specialist "any" booking assigns free specialist & allows c
         serviceId: 'cn4', // 60m
         date: '2026-11-23',
         timeSlot: '10:00',
+        rgpdConsent: VALID_RGPD_CONSENT,
       }),
     }),
     { params: { shopSlug: 'campodonico-nails' } }
@@ -368,6 +383,7 @@ await test('9. Multi-specialist "any" booking assigns free specialist & allows c
         serviceId: 'cn6', // 60m
         date: '2026-11-23',
         timeSlot: '10:00',
+        rgpdConsent: VALID_RGPD_CONSENT,
       }),
     }),
     { params: { shopSlug: 'campodonico-nails' } }
@@ -389,6 +405,7 @@ await test('9. Multi-specialist "any" booking assigns free specialist & allows c
         serviceId: 'cn4',
         date: '2026-11-23',
         timeSlot: '10:00',
+        rgpdConsent: VALID_RGPD_CONSENT,
       }),
     }),
     { params: { shopSlug: 'campodonico-nails' } }
@@ -412,7 +429,12 @@ await test('10. walkInOpen=false persists via sync & blocks walkin bookings with
     new Request('http://localhost/api/shops/campodonico-nails/booking', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'walkin', clientName: 'Elena', clientPhone: '611222333' }),
+      body: JSON.stringify({
+        type: 'walkin',
+        clientName: 'Elena',
+        clientPhone: '611222333',
+        rgpdConsent: VALID_RGPD_CONSENT,
+      }),
     }),
     { params: { shopSlug: 'campodonico-nails' } }
   );
@@ -440,6 +462,207 @@ await test('11. Sync merge preserves local demo agenda & VIP clients when server
   const remoteClients = [{ id: 'c-qr-1', name: 'Clienta QR' }];
   const mergedClients = mergeSyncedClients(remoteClients, localClients, []);
   assert.equal(mergedClients.length, 3);
+});
+
+await test('12. RGPD Booking Consent Gate: missing/false consent returns 422 & valid booking stores rgpdConsent', async () => {
+  resetMemoryStore();
+  // Missing rgpdConsent -> 422
+  const noConsent = await bookingHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'appointment',
+        clientName: 'Sin Permiso',
+        clientPhone: '611111222',
+        serviceId: 'cn4',
+        date: '2026-11-23',
+        timeSlot: '10:00',
+      }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(noConsent.status, 422);
+  const noConsentData = await noConsent.json();
+  assert.equal(noConsentData.error, 'rgpd_consent_required');
+
+  // acceptedPrivacy: false on walkin -> 422
+  const falseConsent = await bookingHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'walkin',
+        clientName: 'Rechaza Privacidad',
+        clientPhone: '611111333',
+        rgpdConsent: { acceptedPrivacy: false, acceptedWhatsapp: true },
+      }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(falseConsent.status, 422);
+
+  // Valid consent stores rgpdConsent on saved appointment
+  const okBooking = await bookingHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'appointment',
+        clientName: 'Valeria Consent',
+        clientPhone: '638877945',
+        serviceId: 'cn4',
+        date: '2026-11-23',
+        timeSlot: '10:00',
+        rgpdConsent: { acceptedPrivacy: true, acceptedWhatsapp: true, policyVersion: '2026.1' },
+      }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(okBooking.status, 201);
+  const okData = await okBooking.json();
+  assert.equal(okData.appointment.rgpdConsent.acceptedPrivacy, true);
+  assert.equal(okData.appointment.rgpdConsent.acceptedWhatsapp, true);
+  assert.equal(okData.appointment.rgpdConsent.policyVersion, '2026.1');
+});
+
+await test('13. Anti Brute-Force PIN Rate Limiting (5 fails -> 429 + Retry-After 900s, valid PIN resets counter)', async () => {
+  resetMemoryStore();
+  // First 2 failures from IP A, then valid PIN resets counter
+  for (let i = 0; i < 2; i++) {
+    const r = await syncHandler(
+      new Request('http://localhost/api/shops/campodonico-nails/sync', {
+        headers: { 'x-shop-pin': '9999', 'x-forwarded-for': '198.51.100.10' },
+      }),
+      { params: { shopSlug: 'campodonico-nails' } }
+    );
+    assert.equal(r.status, 401);
+  }
+  const okReset = await syncHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/sync', {
+      headers: { 'x-shop-pin': '2023', 'x-forwarded-for': '198.51.100.10' },
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(okReset.status, 200);
+
+  // Now 4 failed attempts from IP B -> 401; 5th -> 429 lockout
+  for (let i = 1; i <= 4; i++) {
+    const r = await syncHandler(
+      new Request('http://localhost/api/shops/campodonico-nails/sync', {
+        headers: { 'x-shop-pin': '0000', 'x-forwarded-for': '203.0.113.55' },
+      }),
+      { params: { shopSlug: 'campodonico-nails' } }
+    );
+    assert.equal(r.status, 401, `Attempt ${i} should return 401`);
+  }
+  const fifth = await syncHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/sync', {
+      headers: { 'x-shop-pin': '0000', 'x-forwarded-for': '203.0.113.55' },
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(fifth.status, 429);
+  assert.equal(fifth.headers.get('Retry-After'), '900');
+  const fifthBody = await fifth.json();
+  assert.equal(fifthBody.error, 'too_many_attempts');
+  assert.ok(fifthBody.retryAfterSeconds >= 890);
+
+  // Even a valid PIN from the locked IP stays blocked with 429 during the 15-min window
+  const blockedValid = await syncHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/sync', {
+      headers: { 'x-shop-pin': '2023', 'x-forwarded-for': '203.0.113.55' },
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(blockedValid.status, 429);
+
+  // Audit log recorded pin_lockout with zero plaintext PINs
+  const audit = await getAuditLog('campodonico-nails');
+  const lockoutEvent = audit.find((e) => e.action === 'pin_lockout');
+  assert.ok(lockoutEvent, 'Expected pin_lockout in audit log');
+  assert.ok(!JSON.stringify(audit).includes('2023'), 'Plaintext PIN must NEVER appear in audit log');
+});
+
+await test('14. RGPD Audit Log & Cloud Sync for Internal Cash (dailySales + record_sale + mergeSyncedSales)', async () => {
+  resetMemoryStore();
+  // Upsert client, delete client, update schedule, record sale
+  await syncHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-shop-pin': '2023' },
+      body: JSON.stringify({
+        action: 'upsert_client',
+        payload: { client: { id: 'c-rgpd-1', name: 'María RGPD', consent: { signed: true } } },
+      }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  await syncHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-shop-pin': '2023' },
+      body: JSON.stringify({ action: 'delete_client', payload: { clientId: 'c-rgpd-1' } }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  const saleRes = await syncHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-shop-pin': '2023' },
+      body: JSON.stringify({
+        action: 'record_sale',
+        payload: { sale: { id: 'sale-cloud-1', clientName: 'Valeria', amount: 45, method: 'tarjeta', timestamp: 1763500001000 } },
+      }),
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  assert.equal(saleRes.status, 200);
+
+  const getRes = await syncHandler(
+    new Request('http://localhost/api/shops/campodonico-nails/sync', {
+      headers: { 'x-shop-pin': '2023' },
+    }),
+    { params: { shopSlug: 'campodonico-nails' } }
+  );
+  const getData = await getRes.json();
+  assert.ok(Array.isArray(getData.dailySales));
+  assert.equal(getData.dailySales.length, 1);
+  assert.equal(getData.dailySales[0].id, 'sale-cloud-1');
+
+  const mergedSales = mergeSyncedSales(getData.dailySales, [
+    { id: 'sale-local-1', amount: 30, timestamp: 1763500002000 },
+  ]);
+  assert.equal(mergedSales.length, 2);
+  assert.equal(mergedSales[0].id, 'sale-local-1');
+
+  const audit = await getAuditLog('campodonico-nails');
+  assert.ok(audit.some((e) => e.action === 'upsert_client'));
+  assert.ok(audit.some((e) => e.action === 'delete_client'));
+});
+
+await test('15. Block 1 UI Legal & Security Compliance Audit (RGPD, ARSOPOL, VeriFactu, Clean URLs, Legal Hub)', () => {
+  const pubBooking = fs.readFileSync(path.join(rootDir, 'src/pages/PublicBookingView.jsx'), 'utf8');
+  const rgpdModal = fs.readFileSync(path.join(rootDir, 'src/components/RGPDConsentModal.jsx'), 'utf8');
+  const profile = fs.readFileSync(path.join(rootDir, 'src/pages/ClientProfile.jsx'), 'utf8');
+  const dashboard = fs.readFileSync(path.join(rootDir, 'src/pages/Dashboard.jsx'), 'utf8');
+  const legalModal = fs.readFileSync(path.join(rootDir, 'src/components/LegalComplianceModal.jsx'), 'utf8');
+  const superAdmin = fs.readFileSync(path.join(rootDir, 'src/pages/SuperAdminView.jsx'), 'utf8');
+
+  assert.ok(pubBooking.includes('Art. 13 RGPD'));
+  assert.ok(pubBooking.includes('useState(false)'));
+  assert.ok(pubBooking.includes('publicOnly={true}'));
+  assert.ok(rgpdModal.includes('healthAndFile: false'));
+  assert.ok(rgpdModal.includes('internalPhotos: false'));
+  assert.ok(rgpdModal.includes('photosMarketing: false'));
+  assert.ok(rgpdModal.includes('whatsappReminders: false'));
+  assert.ok(profile.includes('Privacidad &amp; Derechos ARSOPOL'));
+  assert.ok(profile.includes('-datos-rgpd.json'));
+  assert.ok(profile.includes('Revocar permisos opcionales'));
+  assert.ok(profile.includes('Derecho de Supresión'));
+  assert.ok(dashboard.includes('No válido como ticket fiscal ni factura (VeriFactu)'));
+  assert.ok(legalModal.includes('DPA-Art28-'));
+  assert.ok(!superAdmin.includes('&pin='), 'SuperAdminView must NEVER put &pin= into panel URLs');
 });
 
 console.log(`\n---------------------------------------------------------------------`);

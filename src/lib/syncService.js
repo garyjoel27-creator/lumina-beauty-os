@@ -119,6 +119,22 @@ export function mergeSyncedClients(remoteClients, localClients, deletedIds = [])
   return Array.from(byId.values());
 }
 
+export function mergeSyncedSales(remoteSales, localSales) {
+  const remoteList = Array.isArray(remoteSales) ? remoteSales : [];
+  const localList = Array.isArray(localSales) ? localSales : [];
+  const byId = new Map();
+  for (const s of localList) {
+    if (s && s.id) byId.set(String(s.id), s);
+  }
+  for (const s of remoteList) {
+    if (s && s.id) {
+      const prev = byId.get(String(s.id)) || {};
+      byId.set(String(s.id), { ...prev, ...s });
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0));
+}
+
 export function normalizePhoneNumber(phone) {
   if (!phone) return '';
   const digits = String(phone).replace(/\D/g, '');
@@ -141,6 +157,7 @@ export function loadLocalShopState(shopSlug, customStorage) {
     appointments: parse(keys.appointments, []),
     queue: parse(keys.queue, []),
     clients: parse(keys.clients, []),
+    sales: parse(keys.sales, []),
     outbox: parse(keys.outbox, []),
     lastSync: parse(keys.lastSync, null),
   };
@@ -160,6 +177,7 @@ export function saveLocalShopState(shopSlug, state, customStorage) {
   if (state.appointments !== undefined) write(keys.appointments, state.appointments);
   if (state.queue !== undefined) write(keys.queue, state.queue);
   if (state.clients !== undefined) write(keys.clients, state.clients);
+  if (state.sales !== undefined) write(keys.sales, state.sales);
   if (state.outbox !== undefined) write(keys.outbox, state.outbox);
   if (state.lastSync !== undefined) write(keys.lastSync, state.lastSync);
 }
@@ -375,6 +393,7 @@ export class SyncEngine {
           currentLocal.clients,
           deletedIds
         );
+        const mergedSales = mergeSyncedSales(data.dailySales, currentLocal.sales);
         saveLocalShopState(
           this.shopSlug,
           {
@@ -382,6 +401,7 @@ export class SyncEngine {
             appointments: mergedAppointments,
             queue: Array.isArray(data.queue) && data.queue.length > 0 ? data.queue : currentLocal.queue,
             clients: mergedClients,
+            sales: mergedSales,
             lastSync: Date.now(),
           },
           this.storage

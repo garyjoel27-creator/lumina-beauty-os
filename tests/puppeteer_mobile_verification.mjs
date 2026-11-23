@@ -92,15 +92,31 @@ async function main() {
         bgColor: getComputedStyle(document.body).backgroundColor,
         moverCount: document.querySelectorAll('[aria-label="Mover cita"]').length,
         hasPendingTray: document.body.innerText.includes('Solicitudes QR por Aprobar'),
+        hasVeriFactu: Boolean(document.querySelector('[data-testid="verifactu-shield-banner"]')),
       }));
       check(
         dashOverflow.scrollW <= dashOverflow.innerW,
         `Dashboard 0px overflow (${dashOverflow.scrollW} <= ${dashOverflow.innerW}) & luminous canvas (${dashOverflow.bgColor})`
       );
       check(
-        dashOverflow.moverCount >= 3 && dashOverflow.hasPendingTray,
-        `Demo agenda & pending QR tray survive empty /sync (${dashOverflow.moverCount} draggable appointments)`
+        dashOverflow.moverCount >= 3 && dashOverflow.hasPendingTray && dashOverflow.hasVeriFactu,
+        `Demo agenda, pending QR tray & VeriFactu shield banner rendered (${dashOverflow.moverCount} draggable appointments)`
       );
+
+      // 1a. Verify Private Legal Hub opens from mobile header icon button with all 3 tabs incl. Contrato DPA
+      await page.click('[aria-label="Legal y RGPD"]');
+      await new Promise((r) => setTimeout(r, 180));
+      const privLegal = await page.evaluate(() => ({
+        hasDpa: document.body.innerText.includes('Contrato DPA (Art. 28)'),
+        hasPrivacy: document.body.innerText.includes('Política de Privacidad'),
+        hasLssi: document.body.innerText.includes('Aviso Legal (LSSI-CE)'),
+      }));
+      check(
+        privLegal.hasDpa && privLegal.hasPrivacy && privLegal.hasLssi,
+        `Private Legal Hub opens from mobile header with Privacidad, LSSI-CE & Contrato DPA tabs`
+      );
+      await page.click('[aria-label="Cerrar modal legal"]');
+      await new Promise((r) => setTimeout(r, 120));
 
       // 1b. Switch to Peluquería & Estética WHILE on /?shop=campodonico-nails (must NOT snap back!)
       await page.evaluate(() => {
@@ -162,21 +178,61 @@ async function main() {
       }));
       check(peluCheck.hasFormula, `Switched to Peluquería & Estética and rendered colorimetry/facial formulas`);
 
-      // 4. Public QR Portal isolation (/r/campodonico-nails) — ZERO /sync requests!
+      // 3b. Open ClientProfile /clients/n-1 and verify ARSOPOL panel & 4-layer RGPD Consent Modal
+      await page.goto(`${baseUrl}/clients/n-1?shop=campodonico-nails`, { waitUntil: 'networkidle2' });
+      const profileCheck = await page.evaluate(() => {
+        const panel = document.querySelector('[data-testid="arsopol-panel"]');
+        return {
+          scrollW: document.documentElement.scrollWidth,
+          innerW: window.innerWidth,
+          hasArsopol: Boolean(panel),
+          hasPortability: Boolean(panel && panel.innerText.includes('Portabilidad')),
+          hasRevoke: Boolean(panel && panel.innerText.includes('Revocar permisos opcionales')),
+          hasDelete: Boolean(panel && panel.innerText.includes('Derecho de Supresión')),
+        };
+      });
+      check(profileCheck.scrollW <= profileCheck.innerW, `/clients/n-1 0px overflow (${profileCheck.scrollW} <= ${profileCheck.innerW})`);
+      check(
+        profileCheck.hasArsopol && profileCheck.hasPortability && profileCheck.hasRevoke && profileCheck.hasDelete,
+        `ClientProfile renders ARSOPOL panel (Portabilidad, Revocar, Supresión)`
+      );
+
+      // 4. Public QR Portal isolation (/r/campodonico-nails) — ZERO /sync requests + RGPD 1st-layer unchecked checkboxes!
       const syncCalls = [];
       page.on('request', (req) => {
         if (req.url().includes('/sync')) syncCalls.push(req.url());
       });
       await page.goto(`${baseUrl}/r/campodonico-nails`, { waitUntil: 'networkidle2' });
-      const pubCheck = await page.evaluate(() => ({
-        scrollW: document.documentElement.scrollWidth,
-        innerW: window.innerWidth,
-        hasTitle: document.body.innerText.includes('Campodónico'),
-        hasServices: document.body.innerText.includes('Uñas acrílicas Talla S'),
-      }));
+      const pubCheck = await page.evaluate(() => {
+        const rgpd = document.querySelector('[data-testid="rgpd-booking-section"]');
+        const boxes = rgpd ? Array.from(rgpd.querySelectorAll('input[type="checkbox"]')) : [];
+        return {
+          scrollW: document.documentElement.scrollWidth,
+          innerW: window.innerWidth,
+          hasTitle: document.body.innerText.includes('Campodónico'),
+          hasServices: document.body.innerText.includes('Uñas acrílicas Talla S'),
+          hasRgpdBox: Boolean(rgpd && rgpd.textContent.includes('Art. 13 RGPD')),
+          allUnchecked: boxes.length === 2 && boxes.every((b) => b.checked === false),
+        };
+      });
       check(pubCheck.scrollW <= pubCheck.innerW, `/r/campodonico-nails 0px overflow (${pubCheck.scrollW} <= ${pubCheck.innerW})`);
       check(pubCheck.hasTitle && pubCheck.hasServices, `/r/campodonico-nails displays CM Salón D' Campodónico & real services`);
+      check(pubCheck.hasRgpdBox && pubCheck.allUnchecked, `/r/campodonico-nails renders Art. 13 RGPD box with 2 unchecked checkboxes`);
       check(syncCalls.length === 0, `/r/campodonico-nails made ZERO /sync requests (actual: ${syncCalls.length})`);
+
+      // Verify public Legal Modal hides DPA tab
+      await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find((b) =>
+          b.textContent?.includes('Ver Política de Privacidad y Aviso Legal')
+        );
+        btn?.click();
+      });
+      await new Promise((r) => setTimeout(r, 150));
+      const pubLegal = await page.evaluate(() => ({
+        hasPrivacy: document.body.innerText.includes('Política de Privacidad'),
+        hasDpa: document.body.innerText.includes('Contrato DPA (Art. 28)'),
+      }));
+      check(pubLegal.hasPrivacy && !pubLegal.hasDpa, `/r/campodonico-nails Legal modal shows Privacidad & hides internal DPA tab`);
 
       // 5. Public QR Portal Peluquería (/r/peluqueria-estetica) — ZERO nails!
       await page.goto(`${baseUrl}/r/peluqueria-estetica`, { waitUntil: 'networkidle2' });

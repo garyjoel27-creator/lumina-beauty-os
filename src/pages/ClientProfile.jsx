@@ -10,12 +10,17 @@ import {
   Plus,
   Edit3,
   Trash2,
+  ShieldCheck,
+  Download,
+  PenTool,
+  ShieldAlert,
 } from 'lucide-react';
 import { useClients, getRetentionRadarAlert } from '../context/ClientContext';
 import { useShop } from '../context/ShopContext';
 import { NailShapeIcon, NailColorSwatch } from '../components/ClientBentoCard';
 import PhotoCompare from '../components/PhotoCompare';
 import ClientModal from '../components/ClientModal';
+import RGPDConsentModal from '../components/RGPDConsentModal';
 import { NAIL_SHAPES, NAIL_POLISH_COLORS, COLORIMETRY_PRESETS } from '../lib/shopUtils';
 import { soundFx } from '../lib/soundFx';
 
@@ -152,13 +157,16 @@ const ClientProfile = () => {
     repeatLastSessionToday,
     consumeBonoSession,
   } = useClients();
-  const { activeVertical } = useShop();
+  const { activeShop, activeShopSlug, activeVertical } = useShop();
 
   const client = clients.find((c) => String(c.id) === String(id));
   const isNails = activeVertical === 'nails';
 
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [savedToast, setSavedToast] = useState(false);
+  const [isConsentOpen, setIsConsentOpen] = useState(false);
+  const [consentTab, setConsentTab] = useState('form');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [savedToast, setSavedToast] = useState('');
 
   if (!client) {
     return (
@@ -174,11 +182,81 @@ const ClientProfile = () => {
   const radar = getRetentionRadarAlert(client, activeVertical);
   const photoTreatment = client.treatments?.find((t) => t.beforePhoto && t.afterPhoto);
 
+  const showToastMsg = (msg) => {
+    setSavedToast(msg);
+    setTimeout(() => setSavedToast(''), 3200);
+  };
+
   const handleAddSession = (treatmentPayload) => {
     addTreatment(client.id, treatmentPayload);
     soundFx.playSuccess();
-    setSavedToast(true);
-    setTimeout(() => setSavedToast(false), 2200);
+    showToastMsg(`Sesión guardada en el historial de ${client.name}.`);
+  };
+
+  const handleSaveConsent = (clientId, consentRecord) => {
+    updateClient(clientId, { consent: consentRecord });
+    soundFx.playSuccess();
+    showToastMsg('Consentimiento RGPD firmado y sincronizado.');
+  };
+
+  const handleExportPortability = () => {
+    const safeSlug =
+      String(client.name || 'clienta')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'clienta';
+    const exportPayload = {
+      legalBasis: 'Art. 20 RGPD — Derecho a la Portabilidad de Datos',
+      exportedAt: new Date().toISOString(),
+      policyVersion: '2026.1',
+      responsible: {
+        shopName: activeShop?.name || 'LUMINA BEAUTY',
+        shopSlug: activeShopSlug || 'campodonico-nails',
+        address: activeShop?.address || '',
+        phone: activeShop?.phone || '',
+      },
+      personalData: {
+        id: client.id,
+        name: client.name,
+        phone: client.phone || '',
+        nailShape: client.nailShape || null,
+        nailColor: client.nailColor || null,
+        colorFormula: client.colorFormula || null,
+        allergyAlert: client.allergyAlert || '',
+        lastVisit: client.lastVisit || '',
+      },
+      serviceHistory: client.treatments || [],
+      bonos: client.bonos || [],
+      consent: client.consent || { signed: false },
+    };
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${safeSlug}-datos-rgpd.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToastMsg(`Portabilidad descargada: ${safeSlug}-datos-rgpd.json`);
+  };
+
+  const handleRevokeOptionalConsent = () => {
+    const revokedAt = new Date().toISOString();
+    const nextConsent = {
+      ...(client.consent || { signed: false, policyVersion: '2026.1' }),
+      revokedAt,
+      permissions: {
+        ...(client.consent?.permissions || {}),
+        photosMarketing: false,
+        whatsappReminders: false,
+      },
+    };
+    updateClient(client.id, { consent: nextConsent });
+    soundFx.playClick();
+    showToastMsg('Permisos opcionales (Redes/Reels y WhatsApp) revocados y sincronizados.');
   };
 
   return (
@@ -197,6 +275,17 @@ const ClientProfile = () => {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => {
+              setConsentTab(client.consent?.signed ? 'document' : 'form');
+              setIsConsentOpen(true);
+            }}
+            className="btn-silk cursor-pointer"
+          >
+            <ShieldCheck size={14} className={client.consent?.signed ? 'text-[#5C8A74]' : 'text-[#C87A72]'} />
+            <span>Firmar / Ver RGPD</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setIsEditOpen(true)}
             className="btn-silk cursor-pointer"
           >
@@ -205,12 +294,9 @@ const ClientProfile = () => {
           </button>
           <button
             type="button"
-            onClick={() => {
-              deleteClient(client.id);
-              navigate('/clients');
-            }}
+            onClick={() => setConfirmDelete(true)}
             className="p-2.5 rounded-xl bg-[#FDECEB] border border-[#E8B2AE] text-[#9E3836] cursor-pointer"
-            title="Eliminar ficha"
+            title="Derecho de Supresión (Eliminar ficha)"
           >
             <Trash2 size={15} />
           </button>
@@ -226,9 +312,20 @@ const ClientProfile = () => {
             className="w-18 h-18 rounded-3xl object-cover border-2 border-[#E9D9CF] shadow-sm shrink-0"
           />
           <div className="min-w-0">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-[#C59B5F]">
-              {radar.label}
-            </span>
+            <div className="flex items-center flex-wrap gap-1.5 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#C59B5F]">
+                {radar.label}
+              </span>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  client.consent?.signed
+                    ? 'bg-[#EDF5F0] text-[#2B5944] border-[#BDD8C9]'
+                    : 'bg-[#FFF6F2] text-[#9E3836] border-[#E8B2AE]'
+                }`}
+              >
+                {client.consent?.signed ? '✅ RGPD Firmado' : '⚠️ Pendiente RGPD'}
+              </span>
+            </div>
             <h2 className="text-3xl font-serif font-bold text-[#2A201D] truncate">{client.name}</h2>
             <p className="text-xs text-[#6E5A54] mt-0.5">{client.phone}</p>
           </div>
@@ -240,8 +337,7 @@ const ClientProfile = () => {
             onClick={() => {
               soundFx.playSuccess();
               repeatLastSessionToday(client.id);
-              setSavedToast(true);
-              setTimeout(() => setSavedToast(false), 2200);
+              showToastMsg(`Sesión guardada en el historial de ${client.name}.`);
             }}
             className="btn-editorial cursor-pointer"
           >
@@ -263,7 +359,7 @@ const ClientProfile = () => {
 
       {savedToast && (
         <div className="p-3 rounded-2xl bg-[#EDF5F0] border border-[#BDD8C9] text-[#2B5944] text-xs font-bold flex items-center gap-2">
-          <Check size={15} /> Sesión guardada en el historial de {client.name}.
+          <Check size={15} /> {savedToast}
         </div>
       )}
 
@@ -357,6 +453,113 @@ const ClientProfile = () => {
               />
             </div>
           )}
+
+          {/* Panel Privacidad & Derechos ARSOPOL */}
+          <div data-testid="arsopol-panel" className="pearl-card p-5 space-y-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-base font-serif font-bold text-[#2A201D] flex items-center gap-1.5">
+                <ShieldCheck size={16} className="text-[#5C8A74]" />
+                <span>Privacidad &amp; Derechos ARSOPOL</span>
+              </h3>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  client.consent?.signed
+                    ? 'bg-[#EDF5F0] text-[#2B5944]'
+                    : 'bg-[#FFF6F2] text-[#9E3836]'
+                }`}
+              >
+                {client.consent?.signed ? '✅ RGPD Firmado' : '⚠️ Pendiente RGPD'}
+              </span>
+            </div>
+
+            <div className="p-3 rounded-xl bg-[#FAF4EE] border border-[#E9D9CF] text-[11px] text-[#4A3934] space-y-1">
+              <div className="flex justify-between">
+                <span>Firma RGPD:</span>
+                <strong className="text-[#2A201D]">{client.consent?.formattedDate || 'Pendiente'}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span>Redes / Reels:</span>
+                <strong>{client.consent?.permissions?.photosMarketing ? 'Autorizado' : 'No autorizado'}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span>Avisos WhatsApp:</span>
+                <strong>{client.consent?.permissions?.whatsappReminders ? 'Autorizado' : 'No autorizado'}</strong>
+              </div>
+              {client.consent?.revokedAt && (
+                <p className="text-[10px] text-[#9E3836] pt-1 border-t border-[#EFE3DB]">
+                  Revocado el {new Date(client.consent.revokedAt).toLocaleString('es-ES')}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setConsentTab('form');
+                  setIsConsentOpen(true);
+                }}
+                className="btn-editorial w-full !py-2.5 !text-xs cursor-pointer"
+              >
+                <PenTool size={13} />
+                <span>{client.consent?.signed ? 'Ver / Actualizar Firma RGPD' : 'Firmar RGPD (4 Capas)'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportPortability}
+                className="btn-silk w-full !py-2.5 !text-xs justify-center cursor-pointer"
+              >
+                <Download size={13} className="text-[#C87A72]" />
+                <span>Portabilidad: Descargar datos JSON</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleRevokeOptionalConsent}
+                className="w-full py-2.5 px-3 rounded-xl bg-[#F6EFE3] hover:bg-[#EFE2CE] border border-[#DFC79C] text-[#7A5A28] text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <ShieldAlert size={13} />
+                <span>Revocar permisos opcionales</span>
+              </button>
+
+              {!confirmDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="w-full py-2.5 px-3 rounded-xl bg-[#FDECEB] hover:bg-[#FADAD8] border border-[#E8B2AE] text-[#9E3836] text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 size={13} />
+                  <span>Derecho de Supresión (Borrar datos)</span>
+                </button>
+              ) : (
+                <div className="p-3 rounded-xl bg-[#FDECEB] border border-[#E8B2AE] space-y-2">
+                  <p className="text-[11px] text-[#7A2D2B] leading-snug">
+                    <strong>Confirmación (Art. 17 RGPD):</strong> ¿Eliminar permanentemente los datos personales, historial y firma de <strong>{client.name}</strong>?
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      className="flex-1 py-1.5 rounded-lg bg-white border border-[#E9D9CF] text-xs font-bold text-[#4A3934] cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        deleteClient(client.id);
+                        navigate('/clients');
+                      }}
+                      className="flex-1 py-1.5 rounded-lg bg-[#9E3836] text-white text-xs font-bold cursor-pointer"
+                    >
+                      Confirmar Borrado
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Columna Derecha: Registrar Nueva Sesión + Historial */}
@@ -395,6 +598,15 @@ const ClientProfile = () => {
         onSave={(payload) => updateClient(client.id, payload)}
         vertical={activeVertical}
         initialClient={client}
+      />
+
+      <RGPDConsentModal
+        isOpen={isConsentOpen}
+        onClose={() => setIsConsentOpen(false)}
+        client={client}
+        shop={activeShop}
+        initialTab={consentTab}
+        onSaveConsent={handleSaveConsent}
       />
     </div>
   );

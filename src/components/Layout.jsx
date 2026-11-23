@@ -12,10 +12,12 @@ import {
   QrCode,
   Lock,
   ShieldCheck,
+  Scale,
 } from 'lucide-react';
 import WalkInKioskModal from './WalkInKioskModal';
 import CommandPalette from './CommandPalette';
 import QRPosterModal, { SalonPinLockModal } from './QRPosterModal';
+import LegalComplianceModal from './LegalComplianceModal';
 import { useClients } from '../context/ClientContext';
 import { useShop } from '../context/ShopContext';
 import { soundFx } from '../lib/soundFx';
@@ -52,6 +54,7 @@ const Layout = () => {
   const [isCmdKOpen, setIsCmdKOpen] = useState(false);
   const [isQRPosterOpen, setIsQRPosterOpen] = useState(false);
   const [isPinLocked, setIsPinLocked] = useState(false);
+  const [isLegalOpen, setIsLegalOpen] = useState(false);
   const [wallpaperIdx, setWallpaperIdx] = useState(() => {
     try {
       const saved = localStorage.getItem('lumina_beauty_wallpaper_idx');
@@ -341,6 +344,18 @@ const Layout = () => {
               ● {activeShop?.status === 'paused' ? 'Pausado' : 'Activo'}
             </span>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              soundFx.playClick();
+              setIsLegalOpen(true);
+            }}
+            className="w-full px-3 py-2 rounded-xl bg-white hover:bg-[#FAF4EE] border border-[#E9D9CF] text-[11px] font-bold text-[#6E5A54] hover:text-[#2A201D] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <Scale size={13} className="text-[#C87A72]" />
+            <span>Legal &amp; RGPD · DPA</span>
+          </button>
         </div>
       </aside>
 
@@ -432,9 +447,22 @@ const Layout = () => {
               type="button"
               onClick={() => {
                 soundFx.playClick();
+                setIsLegalOpen(true);
+              }}
+              className="md:hidden p-2 min-h-[38px] min-w-[34px] rounded-xl bg-[#FAF6F2] hover:bg-white border border-[#E9D9CF] text-[#6E5A54] hover:text-[#B86566] flex items-center justify-center transition-all cursor-pointer shrink-0"
+              title="Legal, RGPD y Contrato DPA"
+              aria-label="Legal y RGPD"
+            >
+              <Scale size={15} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundFx.playClick();
                 setIsPinLocked(true);
               }}
-              className="p-2 min-h-[38px] min-w-[36px] rounded-xl bg-[#FAF6F2] hover:bg-white border border-[#E9D9CF] text-[#6E5A54] hover:text-[#B86566] flex items-center justify-center transition-all cursor-pointer shrink-0"
+              className="p-2 min-h-[38px] min-w-[34px] rounded-xl bg-[#FAF6F2] hover:bg-white border border-[#E9D9CF] text-[#6E5A54] hover:text-[#B86566] flex items-center justify-center transition-all cursor-pointer shrink-0"
               title="Bloquear pantalla con PIN"
               aria-label="Bloquear con PIN"
             >
@@ -543,6 +571,13 @@ const Layout = () => {
         isOpen={isQRPosterOpen}
         onClose={() => setIsQRPosterOpen(false)}
         onLockScreen={() => setIsPinLocked(true)}
+      />
+      <LegalComplianceModal
+        isOpen={isLegalOpen}
+        onClose={() => setIsLegalOpen(false)}
+        shop={activeShop}
+        shopSlug={activeShopSlug}
+        publicOnly={false}
       />
       <SalonPinLockModal
         isOpen={isPinLocked || needsPinSync}

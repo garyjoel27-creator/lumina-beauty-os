@@ -15,6 +15,7 @@ import {
   Users,
   Plus,
   Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useShop } from '../context/ShopContext';
 import { useClients } from '../context/ClientContext';
@@ -363,6 +364,7 @@ const Dashboard = () => {
     } catch {
       // ignore
     }
+    dispatchSalonAction(activeShopSlug, resolvedPin, 'record_sale', { sale });
 
     // Programar recordatorio automático de Reseña Google 5⭐ a los 30 minutos
     const reviewItem = {
@@ -743,6 +745,16 @@ const Dashboard = () => {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div
+            data-testid="verifactu-shield-banner"
+            className="px-3.5 py-2.5 rounded-xl bg-[#FFF6F2] border border-[#E8B2AE] text-[#8E4742] text-[11px] font-bold flex items-center gap-2"
+          >
+            <AlertTriangle size={14} className="text-[#C87A72] shrink-0" />
+            <span>
+              Control interno de servicios y comisiones · No válido como ticket fiscal ni factura (VeriFactu)
+            </span>
           </div>
 
           <form onSubmit={handleRegisterSale} className="space-y-3">
