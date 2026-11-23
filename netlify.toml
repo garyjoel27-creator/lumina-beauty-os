@@ -1,0 +1,56 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# API Route Rewrites to Netlify Functions (preserving shopSlug & action)
+[[redirects]]
+  from = "/api/shops/:shopSlug/public-state"
+  to = "/.netlify/functions/booking?shopSlug=:shopSlug&action=public-state"
+  status = 200
+
+[[redirects]]
+  from = "/api/shops/:shopSlug/booking"
+  to = "/.netlify/functions/booking?shopSlug=:shopSlug&action=booking"
+  status = 200
+
+[[redirects]]
+  from = "/api/shops/:shopSlug/sync"
+  to = "/.netlify/functions/sync?shopSlug=:shopSlug"
+  status = 200
+
+[[redirects]]
+  from = "/api/admin/shops/:shopSlug/status"
+  to = "/.netlify/functions/admin?shopSlug=:shopSlug&action=status"
+  status = 200
+
+[[redirects]]
+  from = "/api/admin/shops/:shopSlug"
+  to = "/.netlify/functions/admin?shopSlug=:shopSlug"
+  status = 200
+
+[[redirects]]
+  from = "/api/admin/shops"
+  to = "/.netlify/functions/admin"
+  status = 200
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# SPA Fallback Rewrite (Must be after /api redirects)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization, x-shop-pin, x-admin-key"
