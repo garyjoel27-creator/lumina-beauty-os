@@ -179,7 +179,7 @@ const ClientProfile = () => {
     );
   }
 
-  const radar = getRetentionRadarAlert(client, activeVertical);
+  const radar = getRetentionRadarAlert(client, activeVertical, Date.now(), activeShopSlug);
   const photoTreatment = client.treatments?.find((t) => t.beforePhoto && t.afterPhoto);
 
   const showToastMsg = (msg) => {

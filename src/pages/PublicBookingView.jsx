@@ -12,14 +12,25 @@ import {
   User,
   AlertCircle,
   ShieldCheck,
+  CalendarPlus,
+  Bookmark,
+  Copy,
+  Check,
+  Smartphone,
+  RotateCcw,
 } from 'lucide-react';
 import { useShop } from '../context/ShopContext';
 import LegalComplianceModal from '../components/LegalComplianceModal';
 import {
+  buildCustomerPortalUrl,
   buildWhatsAppUrl,
+  clearPublicClientProfile,
+  downloadAppointmentIcs,
   getShopLocalDateTime,
   getShopVertical,
+  loadSavedPublicClientProfile,
   normalizeShopSlug,
+  savePublicClientProfile,
 } from '../lib/shopUtils';
 
 const CATEGORY_LABELS = {
@@ -91,8 +102,9 @@ const PublicBookingView = () => {
   const [selectedBarberId, setSelectedBarberId] = useState('any');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedSlot, setSelectedSlot] = useState('');
-  const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
+  const [savedProfile, setSavedProfile] = useState(() => loadSavedPublicClientProfile(slug));
+  const [clientName, setClientName] = useState(() => savedProfile?.clientName || '');
+  const [clientPhone, setClientPhone] = useState(() => savedProfile?.clientPhone || '');
   const [notes, setNotes] = useState('');
   // RGPD 1st-Layer Consent — BOTH UNCHECKED BY DEFAULT
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
@@ -101,6 +113,54 @@ const PublicBookingView = () => {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [confirmation, setConfirmation] = useState(null);
+  const [copiedPortalLink, setCopiedPortalLink] = useState(false);
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+
+  const portalUrl = useMemo(() => buildCustomerPortalUrl('', slug), [slug]);
+
+  useEffect(() => {
+    const profile = loadSavedPublicClientProfile(slug);
+    setSavedProfile(profile);
+    if (profile?.clientName) setClientName(profile.clientName);
+    if (profile?.clientPhone) setClientPhone(profile.clientPhone);
+  }, [slug]);
+
+  useEffect(() => {
+    const onBeforeInstall = (e) => {
+      e.preventDefault();
+      setInstallPromptEvent(e);
+    };
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+  }, []);
+
+  const handleResetSavedProfile = () => {
+    clearPublicClientProfile(slug);
+    setSavedProfile(null);
+    setClientName('');
+    setClientPhone('');
+  };
+
+  const handleCopyPortalLink = async () => {
+    try {
+      await navigator.clipboard?.writeText(portalUrl);
+      setCopiedPortalLink(true);
+      setTimeout(() => setCopiedPortalLink(false), 2500);
+    } catch {
+      setCopiedPortalLink(true);
+      setTimeout(() => setCopiedPortalLink(false), 2500);
+    }
+  };
+
+  const handleTriggerInstall = async () => {
+    if (!installPromptEvent) return;
+    try {
+      await installPromptEvent.prompt();
+      setInstallPromptEvent(null);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     if (services.length > 0 && !services.some((s) => s.id === selectedServiceId)) {
@@ -270,9 +330,18 @@ const PublicBookingView = () => {
       if (!res.ok || !data?.success) {
         setErrorMsg(data?.message || 'No pudimos completar la reserva. Prueba otro horario.');
       } else {
+        const nextSaved = {
+          clientName: clientName.trim(),
+          clientPhone: clientPhone.trim(),
+          lastServiceId: selectedService?.id || '',
+          lastServiceName: selectedService?.name || '',
+        };
+        savePublicClientProfile(slug, nextSaved);
+        setSavedProfile(nextSaved);
         setConfirmation({
           mode: effectiveBookingMode,
           serviceName: selectedService?.name,
+          durationMinutes: Number(selectedService?.durationMinutes) || 60,
           date: selectedDate,
           timeSlot: selectedSlot,
           specialist: data?.appointment?.barberName || spObj?.name || 'Especialista disponible',
@@ -281,10 +350,19 @@ const PublicBookingView = () => {
         });
       }
     } catch {
+      const nextSaved = {
+        clientName: clientName.trim(),
+        clientPhone: clientPhone.trim(),
+        lastServiceId: selectedService?.id || '',
+        lastServiceName: selectedService?.name || '',
+      };
+      savePublicClientProfile(slug, nextSaved);
+      setSavedProfile(nextSaved);
       // Offline graceful confirmation
       setConfirmation({
         mode: effectiveBookingMode,
         serviceName: selectedService?.name,
+        durationMinutes: Number(selectedService?.durationMinutes) || 60,
         date: selectedDate,
         timeSlot: selectedSlot,
         specialist: 'Equipo del Salón',
@@ -392,6 +470,84 @@ const PublicBookingView = () => {
               </a>
             )}
 
+            {/* Kit "No Pierdas Tu Acceso" para futuras reservas */}
+            <div
+              data-testid="repeat-booking-kit"
+              className="p-4 rounded-2xl bg-[#FAF4EE] border border-[#E9D9CF] text-left space-y-2.5"
+            >
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#B86566] flex items-center gap-1.5">
+                <Bookmark size={13} />
+                <span>Guarda tu cita y tu enlace para repetir sin QR</span>
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {confirmation.mode === 'appointment' && (
+                  <button
+                    type="button"
+                    data-testid="download-ics-btn"
+                    onClick={() =>
+                      downloadAppointmentIcs(
+                        {
+                          title: `${confirmation.serviceName} · ${shop?.name || 'Salón'}`,
+                          description: `Especialista: ${confirmation.specialist}`,
+                          location: shop?.address || '',
+                          date: confirmation.date,
+                          timeSlot: confirmation.timeSlot,
+                          durationMinutes: confirmation.durationMinutes || 60,
+                          bookingUrl: portalUrl,
+                        },
+                        `cita-${slug}-${confirmation.date}.ics`
+                      )
+                    }
+                    className="py-2.5 px-3 rounded-xl bg-white hover:bg-[#F7EAE7] border border-[#E9D9CF] text-xs font-bold text-[#2A201D] flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <CalendarPlus size={15} className="text-[#C87A72]" />
+                    <span>Guardar en mi Calendario</span>
+                  </button>
+                )}
+
+                <a
+                  data-testid="save-link-wa-btn"
+                  href={buildWhatsAppUrl(
+                    '',
+                    `✨ Mi enlace directo para reservar cita en ${shop?.name || 'el salón'} sin QR:\n${portalUrl}`
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-2.5 px-3 rounded-xl bg-white hover:bg-[#EDF5F0] border border-[#D4E4DA] text-xs font-bold text-[#2A201D] flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <MessageCircle size={15} className="text-[#5C8A74]" />
+                  <span>Guardarme enlace en WhatsApp</span>
+                </a>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={handleCopyPortalLink}
+                  className="flex-1 py-2 px-3 rounded-xl bg-white border border-[#E9D9CF] text-[11px] font-bold text-[#4A3934] flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {copiedPortalLink ? <Check size={13} className="text-[#5C8A74]" /> : <Copy size={13} />}
+                  <span>{copiedPortalLink ? '¡Enlace copiado!' : 'Copiar enlace de reservas'}</span>
+                </button>
+
+                {installPromptEvent && (
+                  <button
+                    type="button"
+                    onClick={handleTriggerInstall}
+                    className="flex-1 py-2 px-3 rounded-xl bg-[#C87A72] text-white text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Smartphone size={13} />
+                    <span>Instalar en mi móvil</span>
+                  </button>
+                )}
+              </div>
+
+              <p className="text-[11px] text-[#6E5A54] leading-snug">
+                💡 <strong>Truco:</strong> En tu móvil toca <em>Compartir → Añadir a pantalla de inicio</em> y tendrás el icono de {shop?.name || 'este salón'} siempre a mano.
+              </p>
+            </div>
+
             <button
               type="button"
               onClick={() => {
@@ -406,6 +562,29 @@ const PublicBookingView = () => {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
+            {savedProfile?.clientName && (
+              <div
+                data-testid="returning-client-banner"
+                className="pearl-card px-4 py-3 flex flex-wrap items-center justify-between gap-2 bg-[#F7EAE7]/80 border-[#E5C8C2]"
+              >
+                <div className="text-left min-w-0">
+                  <p className="text-xs font-bold text-[#2A201D]">
+                    ✨ ¡Hola de nuevo, {savedProfile.clientName.split(' ')[0]}!
+                  </p>
+                  <p className="text-[11px] text-[#6E5A54]">
+                    Tus datos están pre-rellenados para reservar en 5 segundos.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleResetSavedProfile}
+                  className="px-2.5 py-1.5 rounded-lg bg-white border border-[#E9D9CF] text-[11px] font-bold text-[#6E5A54] hover:text-[#2A201D] inline-flex items-center gap-1 cursor-pointer shrink-0"
+                >
+                  <RotateCcw size={11} />
+                  <span>Cambiar datos</span>
+                </button>
+              </div>
+            )}
             {/* Selector Modo */}
             <div className={`pearl-card p-1.5 grid ${walkInAllowed ? 'grid-cols-2' : 'grid-cols-1'} gap-1.5`}>
               <button

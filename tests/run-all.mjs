@@ -20,6 +20,11 @@ import {
   SHOP_PELUQUERIA_ESTETICA_CONFIG,
   formatWhatsAppPhone,
   buildWhatsAppUrl,
+  buildCustomerPortalUrl,
+  buildAppointmentIcsContent,
+  loadSavedPublicClientProfile,
+  savePublicClientProfile,
+  clearPublicClientProfile,
   getShopVertical,
   isPublicBookingPath,
   resolveTenantSlug,
@@ -730,6 +735,48 @@ await test('15. Block 1 UI Legal & Security Compliance Audit (RGPD, ARSOPOL, Ver
   assert.ok(dashboard.includes('No válido como ticket fiscal ni factura (VeriFactu)'));
   assert.ok(legalModal.includes('DPA-Art28-'));
   assert.ok(!superAdmin.includes('&pin='), 'SuperAdminView must NEVER put &pin= into panel URLs');
+});
+
+await test('16. Repeat Booking Without QR: ICS Calendar Export, Local Client Recall & WhatsApp Rebooking Links', () => {
+  const portalUrl = buildCustomerPortalUrl('https://lumina-beauty-gary.netlify.app', 'campodonico-nails');
+  assert.equal(portalUrl, 'https://lumina-beauty-gary.netlify.app/r/campodonico-nails');
+
+  const ics = buildAppointmentIcsContent({
+    title: 'Relleno acrílico · CM Salón D’ Campodónico',
+    description: 'Especialista: Camila',
+    location: 'Arrecife, Lanzarote',
+    date: '2026-12-15',
+    timeSlot: '11:30',
+    durationMinutes: 90,
+    bookingUrl: portalUrl,
+  });
+  assert.ok(ics.includes('BEGIN:VCALENDAR'));
+  assert.ok(ics.includes('DTSTART:20261215T113000'));
+  assert.ok(ics.includes('DTEND:20261215T130000'));
+  assert.ok(ics.includes(`URL:${portalUrl}`));
+  assert.ok(ics.includes('END:VCALENDAR'));
+
+  const mem = new Map();
+  const mockStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+  savePublicClientProfile('campodonico-nails', { clientName: 'Lucía Martín', clientPhone: '638877945' }, mockStorage);
+  const loaded = loadSavedPublicClientProfile('campodonico-nails', mockStorage);
+  assert.equal(loaded.clientName, 'Lucía Martín');
+  assert.equal(loaded.clientPhone, '638877945');
+  clearPublicClientProfile('campodonico-nails', mockStorage);
+  assert.equal(loadSavedPublicClientProfile('campodonico-nails', mockStorage), null);
+
+  const pubBooking = fs.readFileSync(path.join(rootDir, 'src/pages/PublicBookingView.jsx'), 'utf8');
+  const clientCtx = fs.readFileSync(path.join(rootDir, 'src/context/ClientContext.jsx'), 'utf8');
+  const dashboard = fs.readFileSync(path.join(rootDir, 'src/pages/Dashboard.jsx'), 'utf8');
+  assert.ok(pubBooking.includes('repeat-booking-kit'));
+  assert.ok(pubBooking.includes('download-ics-btn'));
+  assert.ok(pubBooking.includes('returning-client-banner'));
+  assert.ok(clientCtx.includes('buildCustomerPortalUrl'));
+  assert.ok(dashboard.includes('buildCustomerPortalUrl'));
 });
 
 console.log(`\n---------------------------------------------------------------------`);

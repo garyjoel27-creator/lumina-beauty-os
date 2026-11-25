@@ -22,6 +22,7 @@ import { useClients } from '../context/ClientContext';
 import VisualAgendaTimeline from '../components/VisualAgendaTimeline';
 import {
   RETAIL_COSMETICS,
+  buildCustomerPortalUrl,
   buildWhatsAppUrl,
   getShopLocalDateTime,
 } from '../lib/shopUtils';
@@ -649,9 +650,10 @@ const Dashboard = () => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {pendingQr.map((apt) => {
+              const portalUrl = buildCustomerPortalUrl('', activeShopSlug);
               const confirmWa = buildWhatsAppUrl(
                 apt.clientPhone,
-                `¡Hola ${apt.clientName}! ✨ Tu cita en ${activeShop?.name} para ${apt.serviceName} el ${apt.date} a las ${apt.timeSlot} está CONFIRMADA. ¡Te esperamos!`
+                `¡Hola ${apt.clientName}! ✨ Tu cita en ${activeShop?.name} para ${apt.serviceName} el ${apt.date} a las ${apt.timeSlot} está CONFIRMADA. ¡Te esperamos!\n\nGuarda este enlace para tus próximas reservas 👉 ${portalUrl}`
               );
               return (
                 <div
@@ -879,9 +881,10 @@ const Dashboard = () => {
               <div className="space-y-2">
                 {reviewQueue.slice(0, 3).map((entry) => {
                   const reviewUrl = activeShop?.googleReviewUrl || 'https://g.page/r/';
+                  const portalUrl = buildCustomerPortalUrl('', activeShopSlug);
                   const waLink = buildWhatsAppUrl(
                     entry.clientPhone,
-                    `¡Hola ${entry.clientName}! ✨ Gracias por tu visita hoy en ${activeShop?.name}. Si te ha encantado tu ${entry.serviceName}, nos haría muchísima ilusión tu reseña 5⭐ aquí: ${reviewUrl}`
+                    `¡Hola ${entry.clientName}! ✨ Gracias por tu visita hoy en ${activeShop?.name}. Si te ha encantado tu ${entry.serviceName}, nos haría muchísima ilusión tu reseña 5⭐ aquí: ${reviewUrl}\n\nPara tu próxima cita, reserva directo en 10 seg aquí 👉 ${portalUrl}`
                   );
                   const remainingMins = entry.sendAfter
                     ? Math.max(0, Math.ceil((entry.sendAfter - nowTick) / 60000))

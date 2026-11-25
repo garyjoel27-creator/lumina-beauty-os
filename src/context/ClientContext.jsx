@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useShop } from './ShopContext';
 import { dispatchSalonAction, loadLocalShopState, saveLocalShopState, recordLocalDeletion } from '../lib/syncService';
-import { buildWhatsAppUrl } from '../lib/shopUtils';
+import { buildCustomerPortalUrl, buildWhatsAppUrl } from '../lib/shopUtils';
 
 const ClientContext = createContext();
 
@@ -9,7 +9,7 @@ export const useClients = () => useContext(ClientContext);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export function getRetentionRadarAlert(client, vertical = 'nails', referenceDate = Date.now()) {
+export function getRetentionRadarAlert(client, vertical = 'nails', referenceDate = Date.now(), shopSlug = '') {
   if (!client || !Array.isArray(client.treatments) || client.treatments.length === 0) {
     return { status: 'new', daysSince: 0, dueNow: false, label: 'Nueva clienta', message: '' };
   }
@@ -21,11 +21,13 @@ export function getRetentionRadarAlert(client, vertical = 'nails', referenceDate
   const isUrgent = daysSince >= maxCycle;
   const isDue = daysSince >= minCycle;
 
+  const targetSlug = shopSlug || (vertical === 'peluqueria' ? 'peluqueria-estetica' : 'campodonico-nails');
+  const bookingUrl = buildCustomerPortalUrl('', targetSlug);
   const firstName = String(client.name || 'guapa').split(' ')[0];
   const waText =
     vertical === 'nails'
-      ? `¡Hola ${firstName}! 💅 Hace ${daysSince} días que hicimos tus uñas (${client.nailShape || 'Almendra'} · ${client.nailColor || 'tu tono'}). ¿Te guardamos huequito esta semana para tu relleno acrílico y dejarlas perfectas? ✨`
-      : `¡Hola ${firstName}! 💇‍♀️ Hace ${daysSince} días de tu última visita (${latest.name || 'tu tratamiento'}). Ya toca mimar tu cabello/piel con tu retoque. ¿Te reservo cita esta semana? ✨`;
+      ? `¡Hola ${firstName}! 💅 Hace ${daysSince} días que hicimos tus uñas (${client.nailShape || 'Almendra'} · ${client.nailColor || 'tu tono'}). ¿Te guardamos huequito esta semana para tu relleno acrílico y dejarlas perfectas? ✨\n\nReserva directa en 10 seg aquí 👉 ${bookingUrl}`
+      : `¡Hola ${firstName}! 💇‍♀️ Hace ${daysSince} días de tu última visita (${latest.name || 'tu tratamiento'}). Ya toca mimar tu cabello/piel con tu retoque. ¿Te reservo cita esta semana? ✨\n\nReserva directa en 10 seg aquí 👉 ${bookingUrl}`;
 
   return {
     status: isUrgent ? 'urgent' : isDue ? 'due' : 'fresh',
@@ -494,7 +496,7 @@ export function ClientProvider({ children }) {
 
   const radarDueClients = useMemo(() => {
     return clients
-      .map((c) => ({ client: c, radar: getRetentionRadarAlert(c, activeVertical) }))
+      .map((c) => ({ client: c, radar: getRetentionRadarAlert(c, activeVertical, Date.now(), activeShopSlug) }))
       .filter((x) => x.radar.dueNow)
       .sort((a, b) => b.radar.daysSince - a.radar.daysSince);
   }, [clients, activeVertical]);

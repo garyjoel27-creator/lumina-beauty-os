@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { NAIL_SHAPES, NAIL_POLISH_COLORS } from '../lib/shopUtils';
 import { getRetentionRadarAlert } from '../context/ClientContext';
+import { useShop } from '../context/ShopContext';
 import { soundFx } from '../lib/soundFx';
 
 export function NailShapeIcon({ shapeName = 'Almendra', size = 20 }) {
@@ -53,8 +54,9 @@ const ClientBentoCard = ({ client, vertical = 'nails', onRepeatToday }) => {
   const [repeatedOk, setRepeatedOk] = useState(false);
   const navigate = useNavigate();
 
+  const { activeShopSlug } = useShop();
   const isNails = vertical === 'nails';
-  const radar = getRetentionRadarAlert(client, vertical);
+  const radar = getRetentionRadarAlert(client, vertical, Date.now(), activeShopSlug);
   const latest = client.treatments?.[0];
   const activeBono = client.bonos?.[0];
   const bonoRemaining = activeBono ? Math.max(0, activeBono.total - activeBono.used) : 0;
