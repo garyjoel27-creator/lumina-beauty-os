@@ -8,35 +8,55 @@ import { RotateCcw, PenTool } from 'lucide-react';
 const SignaturePad = ({ onChange, onClear, existingSignature = null }) => {
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
+  const initializedRef = useRef(false);
+  const lastEmittedRef = useRef(null);
+  const sizeRef = useRef({ width: 460, height: 150 });
   const [hasDrawn, setHasDrawn] = useState(Boolean(existingSignature));
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.max(280, Math.round(rect.width || 460));
-    const height = Math.max(140, Math.round(rect.height || 150));
-    const dpr = Math.min(window.devicePixelRatio || 2, 2);
 
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.strokeStyle = '#2A201D';
-    ctx.lineWidth = 2.2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    // Never reset or re-rasterize the canvas when the parent echoes back our own stroke
+    if (existingSignature && existingSignature === lastEmittedRef.current && initializedRef.current) {
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!initializedRef.current) {
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(280, Math.round(rect.width || 460));
+      const height = Math.max(140, Math.round(rect.height || 150));
+      const dpr = Math.min(window.devicePixelRatio || 2, 2);
+      sizeRef.current = { width, height };
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.strokeStyle = '#2A201D';
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      initializedRef.current = true;
+    }
+
+    const { width, height } = sizeRef.current;
 
     if (existingSignature) {
+      let cancelled = false;
       const img = new Image();
       img.onload = () => {
+        if (cancelled || drawingRef.current) return;
         ctx.clearRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
         setHasDrawn(true);
       };
       img.src = existingSignature;
-    } else {
+      return () => {
+        cancelled = true;
+      };
+    } else if (lastEmittedRef.current === null || !drawingRef.current) {
       ctx.clearRect(0, 0, width, height);
+      lastEmittedRef.current = null;
       setHasDrawn(false);
     }
   }, [existingSignature]);
@@ -45,9 +65,11 @@ const SignaturePad = ({ onChange, onClear, existingSignature = null }) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width ? sizeRef.current.width / rect.width : 1;
+    const scaleY = rect.height ? sizeRef.current.height / rect.height : 1;
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
     };
   };
 
@@ -87,7 +109,9 @@ const SignaturePad = ({ onChange, onClear, existingSignature = null }) => {
     drawingRef.current = false;
     const canvas = canvasRef.current;
     if (canvas && typeof onChange === 'function') {
-      onChange(canvas.toDataURL('image/png'));
+      const dataUrl = canvas.toDataURL('image/png');
+      lastEmittedRef.current = dataUrl;
+      onChange(dataUrl);
     }
   };
 
@@ -95,8 +119,9 @@ const SignaturePad = ({ onChange, onClear, existingSignature = null }) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const rect = canvas.getBoundingClientRect();
-    ctx.clearRect(0, 0, rect.width || canvas.width, rect.height || canvas.height);
+    ctx.clearRect(0, 0, sizeRef.current.width, sizeRef.current.height);
+    drawingRef.current = false;
+    lastEmittedRef.current = null;
     setHasDrawn(false);
     onChange?.(null);
     onClear?.();

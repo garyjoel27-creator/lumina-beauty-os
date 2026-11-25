@@ -259,7 +259,7 @@ export async function replayOutbox(shopSlug, pin, options = {}) {
 
       if (res.ok) {
         processed++;
-      } else if (res.status === 401 || res.status === 403) {
+      } else if (res.status === 401 || res.status === 403 || res.status === 429) {
         remaining.push(...outbox.slice(i));
         break;
       } else if (res.status >= 400 && res.status < 500) {
@@ -295,8 +295,11 @@ export class SyncEngine {
     this.status = SYNC_STATUS.IDLE;
     this.timer = null;
     this.destroyed = false;
+    this.authPaused = false;
     this.listeners = { status: [], data: [], outbox: [], error: [], auth: [] };
-    this._onlineHandler = () => this.forceSync();
+    this._onlineHandler = () => {
+      if (!this.authPaused) this.forceSync();
+    };
     this._offlineHandler = () => this._setStatus(SYNC_STATUS.OFFLINE);
   }
 
@@ -332,17 +335,26 @@ export class SyncEngine {
       window.addEventListener('offline', this._offlineHandler);
     }
     this.forceSync();
-    this.timer = setInterval(() => this.forceSync(), this.pollIntervalMs);
+    this.timer = setInterval(() => {
+      if (!this.authPaused) this.forceSync();
+    }, this.pollIntervalMs);
   }
 
   switchShop(newSlug, newPin = '') {
     this.shopSlug = newSlug;
     this.pin = newPin;
+    this.authPaused = false;
     this.forceSync();
   }
 
   async forceSync() {
-    if (this.destroyed || !this.fetch || !this.pin) return null;
+    if (this.destroyed || !this.fetch) return null;
+    if (!this.pin) {
+      this.authPaused = true;
+      this._setStatus(SYNC_STATUS.AUTH_REQUIRED);
+      this._emit('auth', true);
+      return null;
+    }
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       this._setStatus(SYNC_STATUS.OFFLINE);
       return null;
@@ -366,7 +378,8 @@ export class SyncEngine {
         },
       });
 
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401 || res.status === 403 || res.status === 429) {
+        this.authPaused = true;
         this._setStatus(SYNC_STATUS.AUTH_REQUIRED);
         this._emit('auth', true);
         return null;
@@ -378,6 +391,7 @@ export class SyncEngine {
 
       const data = await res.json();
       if (data && data.success) {
+        this.authPaused = false;
         this._emit('auth', false);
         const currentLocal = loadLocalShopState(this.shopSlug, this.storage);
         const deletedIds = getLocalDeletedIds(this.shopSlug, this.storage);

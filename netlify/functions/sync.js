@@ -72,86 +72,95 @@ export default async function handler(request, context) {
 
   // --- PIN AUTHENTICATION WITH ANTI BRUTE-FORCE RATE LIMITING (5 fails -> 15 min block) ---
   const ipHash = hashClientIp(request);
-  const authNow = Date.now();
-  const rateLimitState = await getRateLimitState(shopSlug, ipHash);
-
-  if (rateLimitState?.blockedUntil && rateLimitState.blockedUntil > authNow) {
-    const retryAfterSeconds = Math.max(1, Math.ceil((rateLimitState.blockedUntil - authNow) / 1000));
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'too_many_attempts',
-        message: 'Demasiados intentos fallidos. Espera 15 minutos antes de volver a intentarlo.',
-        retryAfterSeconds,
-      }),
-      {
-        status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Retry-After': String(retryAfterSeconds),
-        },
-      }
-    );
-  }
-
   const providedPin = request.headers.get('x-shop-pin') || url.searchParams.get('pin');
-  if (!providedPin || String(providedPin) !== String(shop.pin)) {
-    const prevAttempts =
-      rateLimitState && (!rateLimitState.blockedUntil || rateLimitState.blockedUntil <= authNow)
-        ? Number(rateLimitState.attempts) || 0
-        : 0;
-    const nextAttempts = prevAttempts + 1;
 
-    if (nextAttempts >= PIN_MAX_FAILED_ATTEMPTS) {
-      const blockedUntil = authNow + PIN_LOCKOUT_MS;
-      await setRateLimitState(shopSlug, ipHash, {
-        attempts: nextAttempts,
-        blockedUntil,
-        updatedAt: authNow,
-      });
-      await appendAuditLog(shopSlug, 'pin_lockout', {
-        ipHash,
-        attempts: nextAttempts,
-        lockDurationSeconds: PIN_LOCKOUT_SECONDS,
-      });
+  const authFailureResponse = await withShopLock(`ratelimit:${shopSlug}:${ipHash}`, async () => {
+    const authNow = Date.now();
+    const rateLimitState = await getRateLimitState(shopSlug, ipHash);
+
+    if (rateLimitState?.blockedUntil && rateLimitState.blockedUntil > authNow) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((rateLimitState.blockedUntil - authNow) / 1000));
       return new Response(
         JSON.stringify({
           success: false,
           error: 'too_many_attempts',
           message: 'Demasiados intentos fallidos. Espera 15 minutos antes de volver a intentarlo.',
-          retryAfterSeconds: PIN_LOCKOUT_SECONDS,
+          retryAfterSeconds,
         }),
         {
           status: 429,
           headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Retry-After': String(PIN_LOCKOUT_SECONDS),
+            'Retry-After': String(retryAfterSeconds),
           },
         }
       );
     }
 
-    await setRateLimitState(shopSlug, ipHash, {
-      attempts: nextAttempts,
-      blockedUntil: null,
-      updatedAt: authNow,
-    });
+    if (!providedPin || String(providedPin) !== String(shop.pin)) {
+      const isExpiredLockout = Boolean(rateLimitState?.blockedUntil && rateLimitState.blockedUntil <= authNow);
+      const prevAttempts =
+        rateLimitState && !isExpiredLockout
+          ? Number(rateLimitState.attempts) || 0
+          : 0;
+      const nextAttempts = prevAttempts + 1;
 
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'unauthorized',
-        message: 'PIN incorrecto para este salón.',
-        remainingAttempts: Math.max(0, PIN_MAX_FAILED_ATTEMPTS - nextAttempts),
-      }),
-      { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-    );
-  }
+      if (nextAttempts >= PIN_MAX_FAILED_ATTEMPTS) {
+        const blockedUntil = authNow + PIN_LOCKOUT_MS;
+        await setRateLimitState(shopSlug, ipHash, {
+          attempts: nextAttempts,
+          blockedUntil,
+          updatedAt: authNow,
+        });
+        await appendAuditLog(shopSlug, 'pin_lockout', {
+          ipHash,
+          attempts: nextAttempts,
+          lockDurationSeconds: PIN_LOCKOUT_SECONDS,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'too_many_attempts',
+            message: 'Demasiados intentos fallidos. Espera 15 minutos antes de volver a intentarlo.',
+            retryAfterSeconds: PIN_LOCKOUT_SECONDS,
+          }),
+          {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Retry-After': String(PIN_LOCKOUT_SECONDS),
+            },
+          }
+        );
+      }
 
-  if (rateLimitState && (rateLimitState.attempts > 0 || rateLimitState.blockedUntil)) {
-    await clearRateLimitState(shopSlug, ipHash);
+      await setRateLimitState(shopSlug, ipHash, {
+        attempts: nextAttempts,
+        blockedUntil: null,
+        updatedAt: authNow,
+      });
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'unauthorized',
+          message: 'PIN incorrecto para este salón.',
+          remainingAttempts: Math.max(0, PIN_MAX_FAILED_ATTEMPTS - nextAttempts),
+        }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
+
+    if (rateLimitState && (rateLimitState.attempts > 0 || rateLimitState.blockedUntil)) {
+      await clearRateLimitState(shopSlug, ipHash);
+    }
+    return null;
+  });
+
+  if (authFailureResponse) {
+    return authFailureResponse;
   }
 
   const { pin: _omittedPin, ...safeShopConfig } = shop;

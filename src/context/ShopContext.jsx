@@ -116,6 +116,30 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const [needsPinSync, setNeedsPinSync] = useState(false);
 
+  // Strip legacy ?pin= parameter from URL cleanly inside an effect (never side-effect in useMemo)
+  useEffect(() => {
+    if (isPublicRoute || typeof window === 'undefined') return;
+    try {
+      const search = window.location.search || routerLocation?.search || '';
+      if (!search) return;
+      const params = new URLSearchParams(search);
+      const urlPin = params.get('pin');
+      if (urlPin !== null) {
+        if (/^\d{4}$/.test(urlPin)) {
+          storage.setItem(`lumina_beauty_${activeShopSlug}_verified_pin`, urlPin);
+        }
+        params.delete('pin');
+        const cleanQuery = params.toString();
+        if (window.history?.replaceState) {
+          const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ''}${window.location.hash || ''}`;
+          window.history.replaceState({}, '', cleanUrl);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [isPublicRoute, activeShopSlug, routerLocation?.search, storage]);
+
   const resolvedPin = useMemo(() => {
     if (isPublicRoute) return '';
     try {
@@ -123,18 +147,7 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
       if (search) {
         const params = new URLSearchParams(search);
         const urlPin = params.get('pin');
-        if (urlPin !== null) {
-          if (typeof window !== 'undefined' && window.history?.replaceState) {
-            params.delete('pin');
-            const cleanQuery = params.toString();
-            const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ''}${window.location.hash || ''}`;
-            window.history.replaceState({}, '', cleanUrl);
-          }
-          if (/^\d{4}$/.test(urlPin)) {
-            storage.setItem(`lumina_beauty_${activeShopSlug}_verified_pin`, urlPin);
-            return urlPin;
-          }
-        }
+        if (urlPin && /^\d{4}$/.test(urlPin)) return urlPin;
       }
       const savedPin = storage.getItem(`lumina_beauty_${activeShopSlug}_verified_pin`);
       if (savedPin && /^\d{4}$/.test(savedPin)) return savedPin;
@@ -314,6 +327,7 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
         const params = new URLSearchParams(routerLocation?.search || '');
         params.set('shop', cleanSlug);
         params.delete('shopSlug');
+        params.delete('pin');
         routerNavigate({ pathname: nextPathname, search: `?${params.toString()}` }, { replace: true });
       }
     },
@@ -493,6 +507,7 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
             setNeedsPinSync(false);
             if (syncEngineRef.current) {
               syncEngineRef.current.pin = cleanPin;
+              syncEngineRef.current.authPaused = false;
               syncEngineRef.current.forceSync();
             }
             setLastSyncTime(Date.now());

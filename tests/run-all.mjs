@@ -12,6 +12,8 @@ import {
   resetMemoryStore,
   getShopConfig,
   getAuditLog,
+  hashClientIp,
+  setRateLimitState,
 } from '../netlify/functions/lib/blobsClient.js';
 import {
   SHOP_CAMPODONICO_NAILS_CONFIG,
@@ -28,6 +30,10 @@ import {
   mergeSyncedAppointments,
   mergeSyncedClients,
   mergeSyncedSales,
+  SyncEngine,
+  enqueueOutboxAction,
+  getOutbox,
+  replayOutbox,
 } from '../src/lib/syncService.js';
 
 const VALID_RGPD_CONSENT = {
@@ -582,6 +588,63 @@ await test('13. Anti Brute-Force PIN Rate Limiting (5 fails -> 429 + Retry-After
   const lockoutEvent = audit.find((e) => e.action === 'pin_lockout');
   assert.ok(lockoutEvent, 'Expected pin_lockout in audit log');
   assert.ok(!JSON.stringify(audit).includes('2023'), 'Plaintext PIN must NEVER appear in audit log');
+
+  // Regression: after 15-min lockout expires (blockedUntil <= now), 1 wrong PIN returns 401 with 4 remaining attempts (NOT immediate 429 re-lockout)
+  const postExpiryReq = new Request('http://localhost/api/shops/campodonico-nails/sync', {
+    headers: { 'x-shop-pin': '0000', 'x-forwarded-for': '203.0.113.55' },
+  });
+  const ipHash = hashClientIp(postExpiryReq);
+  await setRateLimitState('campodonico-nails', ipHash, {
+    attempts: 5,
+    blockedUntil: Date.now() - 1000,
+    updatedAt: Date.now() - 901000,
+  });
+  const postExpiryRes = await syncHandler(postExpiryReq, { params: { shopSlug: 'campodonico-nails' } });
+  assert.equal(postExpiryRes.status, 401);
+  const postExpiryData = await postExpiryRes.json();
+  assert.equal(postExpiryData.remainingAttempts, 4);
+});
+
+await test('13b. SyncEngine prompts auth on empty PIN without hammering /sync & replayOutbox preserves items on 429', async () => {
+  const map = new Map();
+  const storage = {
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(k, String(v)),
+    removeItem: (k) => map.delete(k),
+  };
+
+  let calls = 0;
+  const eng = new SyncEngine({
+    shopSlug: 'campodonico-nails',
+    pin: '',
+    storage,
+    fetch: async () => {
+      calls++;
+      return { ok: false, status: 401 };
+    },
+  });
+  let authRequired = false;
+  eng.on('auth', (v) => { authRequired = v; });
+  await eng.forceSync();
+  assert.equal(calls, 0);
+  assert.equal(authRequired, true);
+  assert.equal(eng.authPaused, true);
+  eng.destroy();
+
+  enqueueOutboxAction('campodonico-nails', 'record_sale', { sale: { id: 's1' } }, storage);
+  enqueueOutboxAction('campodonico-nails', 'record_sale', { sale: { id: 's2' } }, storage);
+  let replayCalls = 0;
+  const replay = await replayOutbox('campodonico-nails', '2023', {
+    storage,
+    fetch: async () => {
+      replayCalls++;
+      return { ok: false, status: 429 };
+    },
+  });
+  assert.equal(replayCalls, 1);
+  assert.equal(replay.remaining, 2);
+  assert.equal(replay.dropped, 0);
+  assert.equal(getOutbox('campodonico-nails', storage).length, 2);
 });
 
 await test('14. RGPD Audit Log & Cloud Sync for Internal Cash (dailySales + record_sale + mergeSyncedSales)', async () => {
@@ -648,6 +711,8 @@ await test('15. Block 1 UI Legal & Security Compliance Audit (RGPD, ARSOPOL, Ver
   const dashboard = fs.readFileSync(path.join(rootDir, 'src/pages/Dashboard.jsx'), 'utf8');
   const legalModal = fs.readFileSync(path.join(rootDir, 'src/components/LegalComplianceModal.jsx'), 'utf8');
   const superAdmin = fs.readFileSync(path.join(rootDir, 'src/pages/SuperAdminView.jsx'), 'utf8');
+  const sigPad = fs.readFileSync(path.join(rootDir, 'src/components/SignaturePad.jsx'), 'utf8');
+  const shopCtx = fs.readFileSync(path.join(rootDir, 'src/context/ShopContext.jsx'), 'utf8');
 
   assert.ok(pubBooking.includes('Art. 13 RGPD'));
   assert.ok(pubBooking.includes('useState(false)'));
@@ -656,6 +721,8 @@ await test('15. Block 1 UI Legal & Security Compliance Audit (RGPD, ARSOPOL, Ver
   assert.ok(rgpdModal.includes('internalPhotos: false'));
   assert.ok(rgpdModal.includes('photosMarketing: false'));
   assert.ok(rgpdModal.includes('whatsappReminders: false'));
+  assert.ok(sigPad.includes('lastEmittedRef'));
+  assert.ok(shopCtx.includes("params.delete('pin')"));
   assert.ok(profile.includes('Privacidad &amp; Derechos ARSOPOL'));
   assert.ok(profile.includes('-datos-rgpd.json'));
   assert.ok(profile.includes('Revocar permisos opcionales'));

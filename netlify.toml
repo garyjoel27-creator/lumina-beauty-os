@@ -2,6 +2,9 @@
   publish = "dist"
   command = "npm run build"
 
+[build.environment]
+  AWS_LAMBDA_JS_RUNTIME = "nodejs22.x"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
