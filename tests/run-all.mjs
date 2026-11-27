@@ -16,6 +16,8 @@ import {
   setRateLimitState,
 } from '../netlify/functions/lib/blobsClient.js';
 import {
+  BEAUTY_THEMES,
+  normalizeBeautyThemeId,
   SHOP_CAMPODONICO_NAILS_CONFIG,
   SHOP_PELUQUERIA_ESTETICA_CONFIG,
   formatWhatsAppPhone,
@@ -794,6 +796,15 @@ await test('16. Repeat Booking Without QR: ICS Calendar Export, Local Client Rec
 
   const autoReply = buildWhatsAppAutoReplyTemplate('CM Salón', portalUrl);
   assert.ok(autoReply.includes(portalUrl));
+
+  // Multi-Theme Engine verification
+  assert.equal(BEAUTY_THEMES.length, 5);
+  assert.equal(normalizeBeautyThemeId('botanical-sage'), 'botanical-sage');
+  assert.equal(normalizeBeautyThemeId('obsidian-glam'), 'obsidian-glam');
+  assert.equal(normalizeBeautyThemeId('unknown-theme'), 'silk-rose');
+  const css = fs.readFileSync(path.join(rootDir, 'src/index.css'), 'utf8');
+  assert.ok(css.includes('html[data-theme="obsidian-glam"]'));
+  assert.ok(css.includes('html[data-theme="botanical-sage"]'));
 });
 
 console.log(`\n---------------------------------------------------------------------`);

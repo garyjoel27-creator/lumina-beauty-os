@@ -507,6 +507,7 @@ export default async function handler(request, context) {
             : {}),
           ...(Array.isArray(payload.services) ? { services: payload.services } : {}),
           ...(payload.walkInOpen !== undefined ? { walkInOpen: Boolean(payload.walkInOpen) } : {}),
+          ...(typeof payload.themeId === 'string' && payload.themeId.trim() ? { themeId: payload.themeId.trim() } : {}),
           updatedAt: Date.now(),
         };
         await setShopConfig(shopSlug, updatedShop);

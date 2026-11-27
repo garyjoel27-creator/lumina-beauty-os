@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useRef,
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   DEFAULT_SHOP_SLUG,
+  DEFAULT_BEAUTY_THEME_ID,
+  normalizeBeautyThemeId,
   SHOP_CAMPODONICO_NAILS_CONFIG,
   SHOP_PELUQUERIA_ESTETICA_CONFIG,
   normalizeShopSlug,
@@ -394,6 +396,48 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
     return nextWalkIn;
   }, [activeShop?.walkInOpen, activeShopSlug, resolvedPin, isPublicRoute, storage, customFetch]);
 
+  const activeThemeId = useMemo(() => {
+    if (activeShop?.themeId) return normalizeBeautyThemeId(activeShop.themeId);
+    try {
+      const saved = storage.getItem(`lumina_beauty_${activeShopSlug}_theme`);
+      if (saved) return normalizeBeautyThemeId(saved);
+    } catch {
+      // ignore
+    }
+    return DEFAULT_BEAUTY_THEME_ID;
+  }, [activeShop?.themeId, activeShopSlug, storage]);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', activeThemeId);
+    }
+  }, [activeThemeId]);
+
+  const setShopTheme = useCallback(
+    (nextThemeId) => {
+      const cleanTheme = normalizeBeautyThemeId(nextThemeId);
+      setActiveShop((prev) => {
+        if (!prev) return prev;
+        const updated = { ...prev, themeId: cleanTheme };
+        try {
+          storage.setItem(`lumina_beauty_${activeShopSlug}_config`, JSON.stringify(updated));
+          storage.setItem(`lumina_beauty_${activeShopSlug}_theme`, cleanTheme);
+        } catch {
+          // ignore
+        }
+        return updated;
+      });
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-theme', cleanTheme);
+      }
+      if (!isPublicRoute) {
+        dispatchSalonAction(activeShopSlug, resolvedPin, 'update_shop_schedule', { themeId: cleanTheme }, { storage, fetch: customFetch });
+      }
+      return cleanTheme;
+    },
+    [activeShopSlug, resolvedPin, isPublicRoute, storage, customFetch]
+  );
+
   const refreshShops = useCallback(
     async (adminKey = 'lumina-beauty-admin-2026') => {
       setIsLoading(true);
@@ -567,6 +611,8 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
       forceSyncNow,
       updateLocalShopSchedule,
       toggleWalkInOpen,
+      activeThemeId,
+      setShopTheme,
     }),
     [
       activeShopSlug,
@@ -591,6 +637,8 @@ export function ShopProvider({ children, initialSlug = null, customStorage = nul
       forceSyncNow,
       updateLocalShopSchedule,
       toggleWalkInOpen,
+      activeThemeId,
+      setShopTheme,
     ]
   );
 

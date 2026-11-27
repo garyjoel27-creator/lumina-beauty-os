@@ -33,6 +33,7 @@ import {
   getShopLocalDateTime,
   getShopVertical,
   loadSavedPublicClientProfile,
+  normalizeBeautyThemeId,
   normalizeShopSlug,
   savePublicClientProfile,
 } from '../lib/shopUtils';
@@ -133,6 +134,13 @@ const PublicBookingView = () => {
     if (profile?.clientName) setClientName(profile.clientName);
     if (profile?.clientPhone) setClientPhone(profile.clientPhone);
   }, [slug]);
+
+  useEffect(() => {
+    const remoteTheme = remoteShop?.themeId || activeShop?.themeId;
+    if (remoteTheme && typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', normalizeBeautyThemeId(remoteTheme));
+    }
+  }, [remoteShop?.themeId, activeShop?.themeId]);
 
   useEffect(() => {
     const onBeforeInstall = (e) => {

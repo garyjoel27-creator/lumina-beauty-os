@@ -16,11 +16,13 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
+  Palette,
 } from 'lucide-react';
 import WalkInKioskModal from './WalkInKioskModal';
 import CommandPalette from './CommandPalette';
 import QRPosterModal, { SalonPinLockModal } from './QRPosterModal';
 import LegalComplianceModal from './LegalComplianceModal';
+import ThemePickerModal from './ThemePickerModal';
 import { useClients } from '../context/ClientContext';
 import { useShop } from '../context/ShopContext';
 import { soundFx } from '../lib/soundFx';
@@ -58,6 +60,7 @@ const Layout = () => {
   const [isQRPosterOpen, setIsQRPosterOpen] = useState(false);
   const [isPinLocked, setIsPinLocked] = useState(false);
   const [isLegalOpen, setIsLegalOpen] = useState(false);
+  const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [showMoreTools, setShowMoreTools] = useState(false);
   const [wallpaperIdx, setWallpaperIdx] = useState(() => {
     try {
@@ -301,6 +304,24 @@ const Layout = () => {
                 <div className="space-y-2 pl-1 pt-1">
                   <button
                     type="button"
+                    data-testid="open-theme-picker"
+                    onClick={() => {
+                      soundFx.playClick();
+                      setIsThemeOpen(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/90 hover:bg-[#FAF4EE] border border-[#E9D9CF] flex items-center space-x-3 text-left transition-all cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[#F7EAE7] text-[#C87A72] flex items-center justify-center shrink-0">
+                      <Palette size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-sm font-bold text-[#2A201D] block leading-tight">Estilo y Colores</span>
+                      <span className="text-xs text-[#6E5A54] block truncate">5 paletas de lujo</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => {
                       soundFx.playClick();
                       setIsKioskOpen(true);
@@ -453,13 +474,27 @@ const Layout = () => {
 
             <button
               type="button"
-              onClick={handleCycleWallpaper}
+              onClick={() => {
+                soundFx.playClick();
+                setIsThemeOpen(true);
+              }}
               className="p-2 sm:px-3 sm:py-2 min-h-[38px] min-w-[36px] rounded-xl bg-[#FAF6F2] hover:bg-white border border-[#E9D9CF] hover:border-[#C87A72] text-xs font-bold text-[#2A201D] flex items-center justify-center space-x-1.5 transition-all cursor-pointer shrink-0"
+              title="Cambiar estilo y colores"
+              aria-label="Cambiar estilo y colores"
+            >
+              <Palette size={15} className="text-[#C87A72]" />
+              <span className="hidden sm:inline">Estilo</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCycleWallpaper}
+              className="hidden sm:flex p-2 sm:px-3 sm:py-2 min-h-[38px] min-w-[36px] rounded-xl bg-[#FAF6F2] hover:bg-white border border-[#E9D9CF] hover:border-[#C87A72] text-xs font-bold text-[#2A201D] items-center justify-center space-x-1.5 transition-all cursor-pointer shrink-0"
               title="Cambiar fondo fotográfico"
               aria-label="Cambiar fondo"
             >
               <ImageIcon size={15} className="text-[#C87A72]" />
-              <span className="hidden sm:inline">{currentWallpaper.name}</span>
+              <span className="hidden lg:inline">{currentWallpaper.name}</span>
             </button>
 
             <button
@@ -598,6 +633,7 @@ const Layout = () => {
         shopSlug={activeShopSlug}
         publicOnly={false}
       />
+      <ThemePickerModal isOpen={isThemeOpen} onClose={() => setIsThemeOpen(false)} />
       <SalonPinLockModal
         isOpen={isPinLocked || needsPinSync}
         expectedPin={activeShop?.pin || '2023'}

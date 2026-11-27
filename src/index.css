@@ -241,3 +241,162 @@
     display: block !important;
   }
 }
+
+/* ========================================================================= */
+/* MULTI-THEME ENGINE (Champán, Salvia, Lavanda, Obsidiana Glam)             */
+/* ========================================================================= */
+
+/* 1. Champán & Oro Viejo */
+html[data-theme="champagne-gold"] {
+  --color-canvas: #FAF8F3;
+  --color-rose: #B68B4C;
+  --color-rose-deep: #976E32;
+  --color-rose-soft: #F6EFE0;
+}
+html[data-theme="champagne-gold"] body,
+html[data-theme="champagne-gold"] .bg-\[\#FAF6F2\] {
+  background-color: #FAF8F3 !important;
+}
+html[data-theme="champagne-gold"] .btn-editorial,
+html[data-theme="champagne-gold"] .bg-\[\#C87A72\] {
+  background: linear-gradient(135deg, #B68B4C 0%, #976E32 100%) !important;
+  border-color: rgba(151, 110, 50, 0.55) !important;
+  box-shadow: 0 8px 20px -6px rgba(151, 110, 50, 0.4) !important;
+}
+html[data-theme="champagne-gold"] .from-\[\#C87A72\] {
+  --tw-gradient-from: #B68B4C !important;
+  --tw-gradient-to: #976E32 !important;
+}
+html[data-theme="champagne-gold"] .text-\[\#C87A72\],
+html[data-theme="champagne-gold"] .text-\[\#B86566\],
+html[data-theme="champagne-gold"] .text-\[\#8E4742\] {
+  color: #8A6125 !important;
+}
+html[data-theme="champagne-gold"] .bg-\[\#F7EAE7\],
+html[data-theme="champagne-gold"] .bg-\[\#F7EAE7\]\/80 {
+  background-color: #F6EFE0 !important;
+}
+html[data-theme="champagne-gold"] .border-\[\#C87A72\] {
+  border-color: #B68B4C !important;
+}
+
+/* 2. Salvia Botánico & Spa */
+html[data-theme="botanical-sage"] {
+  --color-canvas: #F3F8F5;
+  --color-rose: #4A7B63;
+  --color-rose-deep: #35614C;
+  --color-rose-soft: #E8F2EC;
+}
+html[data-theme="botanical-sage"] body,
+html[data-theme="botanical-sage"] .bg-\[\#FAF6F2\] {
+  background-color: #F3F8F5 !important;
+}
+html[data-theme="botanical-sage"] .btn-editorial,
+html[data-theme="botanical-sage"] .bg-\[\#C87A72\] {
+  background: linear-gradient(135deg, #4A7B63 0%, #35614C 100%) !important;
+  border-color: rgba(53, 97, 76, 0.55) !important;
+  box-shadow: 0 8px 20px -6px rgba(53, 97, 76, 0.38) !important;
+}
+html[data-theme="botanical-sage"] .from-\[\#C87A72\] {
+  --tw-gradient-from: #4A7B63 !important;
+  --tw-gradient-to: #35614C !important;
+}
+html[data-theme="botanical-sage"] .text-\[\#C87A72\],
+html[data-theme="botanical-sage"] .text-\[\#B86566\],
+html[data-theme="botanical-sage"] .text-\[\#8E4742\] {
+  color: #2D5744 !important;
+}
+html[data-theme="botanical-sage"] .bg-\[\#F7EAE7\],
+html[data-theme="botanical-sage"] .bg-\[\#F7EAE7\]\/80 {
+  background-color: #E8F2EC !important;
+}
+html[data-theme="botanical-sage"] .border-\[\#C87A72\] {
+  border-color: #4A7B63 !important;
+}
+
+/* 3. Lavanda & Malva Chic */
+html[data-theme="lavender-atelier"] {
+  --color-canvas: #F8F5FA;
+  --color-rose: #8B669E;
+  --color-rose-deep: #6F4C82;
+  --color-rose-soft: #F1E9F6;
+}
+html[data-theme="lavender-atelier"] body,
+html[data-theme="lavender-atelier"] .bg-\[\#FAF6F2\] {
+  background-color: #F8F5FA !important;
+}
+html[data-theme="lavender-atelier"] .btn-editorial,
+html[data-theme="lavender-atelier"] .bg-\[\#C87A72\] {
+  background: linear-gradient(135deg, #8B669E 0%, #6F4C82 100%) !important;
+  border-color: rgba(111, 76, 130, 0.55) !important;
+  box-shadow: 0 8px 20px -6px rgba(111, 76, 130, 0.38) !important;
+}
+html[data-theme="lavender-atelier"] .from-\[\#C87A72\] {
+  --tw-gradient-from: #8B669E !important;
+  --tw-gradient-to: #6F4C82 !important;
+}
+html[data-theme="lavender-atelier"] .text-\[\#C87A72\],
+html[data-theme="lavender-atelier"] .text-\[\#B86566\],
+html[data-theme="lavender-atelier"] .text-\[\#8E4742\] {
+  color: #6B4780 !important;
+}
+html[data-theme="lavender-atelier"] .bg-\[\#F7EAE7\],
+html[data-theme="lavender-atelier"] .bg-\[\#F7EAE7\]\/80 {
+  background-color: #F1E9F6 !important;
+}
+html[data-theme="lavender-atelier"] .border-\[\#C87A72\] {
+  border-color: #8B669E !important;
+}
+
+/* 4. Obsidiana & Oro Rosa (Modo Oscuro Glam) */
+html[data-theme="obsidian-glam"] {
+  --color-canvas: #141116;
+  --color-espresso: #F8F1EC;
+  --color-mocha: #CFC2BC;
+  --color-linen: #342B36;
+}
+html[data-theme="obsidian-glam"] body,
+html[data-theme="obsidian-glam"] .bg-\[\#FAF6F2\] {
+  background-color: #141116 !important;
+  color: #F8F1EC !important;
+}
+html[data-theme="obsidian-glam"] .pearl-card,
+html[data-theme="obsidian-glam"] .bg-white,
+html[data-theme="obsidian-glam"] .bg-\[\#FFFDFB\],
+html[data-theme="obsidian-glam"] .bg-white\/84,
+html[data-theme="obsidian-glam"] .bg-white\/90 {
+  background-color: rgba(28, 24, 30, 0.92) !important;
+  border-color: #382E3B !important;
+  color: #F8F1EC !important;
+}
+html[data-theme="obsidian-glam"] .bg-\[\#FAF4EE\],
+html[data-theme="obsidian-glam"] .bg-\[\#F7EAE7\],
+html[data-theme="obsidian-glam"] .bg-\[\#F7EAE7\]\/80,
+html[data-theme="obsidian-glam"] .pearl-inset {
+  background-color: #241E27 !important;
+  border-color: #3B3040 !important;
+}
+html[data-theme="obsidian-glam"] .text-\[\#2A201D\],
+html[data-theme="obsidian-glam"] .text-\[\#4A3934\] {
+  color: #F8F1EC !important;
+}
+html[data-theme="obsidian-glam"] .text-\[\#6E5A54\],
+html[data-theme="obsidian-glam"] .text-\[\#9A847D\] {
+  color: #CFC2BC !important;
+}
+html[data-theme="obsidian-glam"] .text-\[\#8E4742\],
+html[data-theme="obsidian-glam"] .text-\[\#B86566\] {
+  color: #F0A39A !important;
+}
+html[data-theme="obsidian-glam"] .btn-silk {
+  background: #241E27 !important;
+  color: #F8F1EC !important;
+  border-color: #3B3040 !important;
+}
+html[data-theme="obsidian-glam"] input,
+html[data-theme="obsidian-glam"] select,
+html[data-theme="obsidian-glam"] textarea {
+  background-color: #1A151D !important;
+  color: #F8F1EC !important;
+  border-color: #3E3342 !important;
+}

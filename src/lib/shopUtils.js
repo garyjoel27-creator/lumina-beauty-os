@@ -521,6 +521,51 @@ export function buildWhatsAppAutoReplyTemplate(shopName = 'nuestro salón', port
   return `¡Hola! ✨ Gracias por escribir a ${shopName}.\nPara ver huecos libres y reservar tu cita en 10 segundos sin esperar, toca aquí 👉 ${portalUrl}`;
 }
 
+export const BEAUTY_THEMES = [
+  {
+    id: 'silk-rose',
+    name: 'Rosa Seda & Terracota',
+    tagline: 'Luminoso, cálido y editorial (Por defecto)',
+    mode: 'light',
+    swatches: ['#FAF6F2', '#C87A72', '#C59B5F'],
+  },
+  {
+    id: 'champagne-gold',
+    name: 'Champán & Oro Viejo',
+    tagline: 'Alta estética y lujo discreto dorado',
+    mode: 'light',
+    swatches: ['#FAF8F3', '#B68B4C', '#D4AF37'],
+  },
+  {
+    id: 'botanical-sage',
+    name: 'Salvia Botánico & Spa',
+    tagline: 'Orgánico, natural y relajante',
+    mode: 'light',
+    swatches: ['#F3F8F5', '#4A7B63', '#8BA888'],
+  },
+  {
+    id: 'lavender-atelier',
+    name: 'Lavanda & Malva Chic',
+    tagline: 'Moderno, femenino y fresco para nail bars',
+    mode: 'light',
+    swatches: ['#F8F5FA', '#8B669E', '#C58FB0'],
+  },
+  {
+    id: 'obsidian-glam',
+    name: 'Obsidiana & Oro Rosa',
+    tagline: 'Modo oscuro glam de alto contraste',
+    mode: 'dark',
+    swatches: ['#141116', '#D88A82', '#C59B5F'],
+  },
+];
+
+export const DEFAULT_BEAUTY_THEME_ID = 'silk-rose';
+
+export function normalizeBeautyThemeId(themeId) {
+  const clean = String(themeId || '').trim().toLowerCase();
+  return BEAUTY_THEMES.some((t) => t.id === clean) ? clean : DEFAULT_BEAUTY_THEME_ID;
+}
+
 export function buildSalonHubUrl(slug, origin = '') {
   const cleanSlug = normalizeShopSlug(slug) || DEFAULT_SHOP_SLUG;
   const prefix = origin ? origin.replace(/\/+$/, '') : '';
