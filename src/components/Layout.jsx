@@ -13,6 +13,9 @@ import {
   Lock,
   ShieldCheck,
   Scale,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal,
 } from 'lucide-react';
 import WalkInKioskModal from './WalkInKioskModal';
 import CommandPalette from './CommandPalette';
@@ -55,6 +58,7 @@ const Layout = () => {
   const [isQRPosterOpen, setIsQRPosterOpen] = useState(false);
   const [isPinLocked, setIsPinLocked] = useState(false);
   const [isLegalOpen, setIsLegalOpen] = useState(false);
+  const [showMoreTools, setShowMoreTools] = useState(false);
   const [wallpaperIdx, setWallpaperIdx] = useState(() => {
     try {
       const saved = localStorage.getItem('lumina_beauty_wallpaper_idx');
@@ -259,62 +263,77 @@ const Layout = () => {
               );
             })}
 
-            <div className="pt-4">
-              <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-[#9A847D]">
-                Herramientas del Salón
-              </p>
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundFx.playClick();
-                    setIsQRPosterOpen(true);
-                  }}
-                  className="w-full px-3.5 py-3 rounded-xl bg-[#F7EAE7] hover:bg-[#F3DFDA] border border-[#E5C5BE] flex items-center space-x-3 text-left transition-all cursor-pointer"
-                >
-                  <div className="w-9 h-9 rounded-xl bg-[#C87A72] text-white flex items-center justify-center shrink-0">
-                    <QrCode size={17} />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-sm font-bold text-[#2A201D] block leading-tight">Mi Cartel QR</span>
-                    <span className="text-[11px] text-[#8E4742] block truncate">Reservas online clientas</span>
-                  </div>
-                </button>
+            <div className="pt-3 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  soundFx.playClick();
+                  setIsQRPosterOpen(true);
+                }}
+                className="w-full px-3.5 py-3.5 rounded-xl bg-[#F7EAE7] hover:bg-[#F3DFDA] border border-[#E5C5BE] flex items-center space-x-3 text-left transition-all cursor-pointer"
+              >
+                <div className="w-9 h-9 rounded-xl bg-[#C87A72] text-white flex items-center justify-center shrink-0">
+                  <QrCode size={18} />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-sm font-bold text-[#2A201D] block leading-tight">Compartir Reservas</span>
+                  <span className="text-xs text-[#8E4742] block truncate">WhatsApp, Instagram y QR</span>
+                </div>
+              </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundFx.playClick();
-                    setIsKioskOpen(true);
-                  }}
-                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 hover:bg-[#FAF4EE] border border-[#E9D9CF] flex items-center space-x-3 text-left transition-all cursor-pointer"
-                >
-                  <div className="w-9 h-9 rounded-xl bg-[#F6EFE3] text-[#C59B5F] flex items-center justify-center shrink-0">
-                    <Tv size={17} />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-sm font-bold text-[#2A201D] block leading-tight">Pantalla Sala</span>
-                    <span className="text-[11px] text-[#6E5A54] block truncate">Turnos en vivo en recepción</span>
-                  </div>
-                </button>
+              <button
+                type="button"
+                data-testid="toggle-more-tools"
+                onClick={() => {
+                  soundFx.playClick();
+                  setShowMoreTools((v) => !v);
+                }}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/80 hover:bg-[#FAF4EE] border border-[#E9D9CF] flex items-center justify-between text-left transition-all cursor-pointer text-xs font-bold text-[#4A3934]"
+              >
+                <span className="flex items-center gap-2">
+                  <SlidersHorizontal size={15} className="text-[#C59B5F]" />
+                  <span>Más herramientas</span>
+                </span>
+                {showMoreTools ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundFx.playClick();
-                    navigate('/admin');
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/70 hover:bg-[#FAF4EE] border border-[#E9D9CF] flex items-center space-x-3 text-left transition-all cursor-pointer"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-[#FAF4EE] text-[#6E5A54] flex items-center justify-center shrink-0">
-                    <ShieldCheck size={16} />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-xs font-bold text-[#4A3934] block leading-tight">Panel Súper-Admin</span>
-                    <span className="text-[10px] text-[#9A847D] block truncate">Alta y gestión de salones</span>
-                  </div>
-                </button>
-              </div>
+              {showMoreTools && (
+                <div className="space-y-2 pl-1 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundFx.playClick();
+                      setIsKioskOpen(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/90 hover:bg-[#FAF4EE] border border-[#E9D9CF] flex items-center space-x-3 text-left transition-all cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[#F6EFE3] text-[#C59B5F] flex items-center justify-center shrink-0">
+                      <Tv size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-sm font-bold text-[#2A201D] block leading-tight">Pantalla Sala</span>
+                      <span className="text-xs text-[#6E5A54] block truncate">Turnos en recepción</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundFx.playClick();
+                      navigate('/admin');
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/90 hover:bg-[#FAF4EE] border border-[#E9D9CF] flex items-center space-x-3 text-left transition-all cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[#FAF4EE] text-[#6E5A54] flex items-center justify-center shrink-0">
+                      <ShieldCheck size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-sm font-bold text-[#4A3934] block leading-tight">Panel Súper-Admin</span>
+                      <span className="text-xs text-[#6E5A54] block truncate">Gestionar salones</span>
+                    </div>
+                  </button>
+                </div>
+              )}
             </div>
           </nav>
         </div>

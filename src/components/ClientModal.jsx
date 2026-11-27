@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Check, Palette, FlaskConical, ShieldCheck } from 'lucide-react';
+import { X, Sparkles, Check, Palette, FlaskConical, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { NAIL_SHAPES, NAIL_POLISH_COLORS, COLORIMETRY_PRESETS } from '../lib/shopUtils';
 import { NailShapeIcon, NailColorSwatch } from './ClientBentoCard';
 import { soundFx } from '../lib/soundFx';
@@ -20,6 +20,7 @@ const ClientModalForm = ({ onClose, onSave, vertical = 'nails', initialClient = 
   const [notes, setNotes] = useState(initialClient?.treatments?.[0]?.notes || '');
   const [bonoTitle, setBonoTitle] = useState(initialClient?.bonos?.[0]?.title || '');
   const [bonoTotal, setBonoTotal] = useState(initialClient?.bonos?.[0]?.total || 4);
+  const [showAdvanced, setShowAdvanced] = useState(Boolean(initialClient));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -84,10 +85,10 @@ const ClientModalForm = ({ onClose, onSave, vertical = 'nails', initialClient = 
         </div>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-3.5">
             <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-[#6E5A54] block mb-1">
-                Nombre completo
+              <label className="text-sm font-bold text-[#2A201D] block mb-1.5">
+                1. Nombre de la clienta <span className="text-[#C87A72]">*</span>
               </label>
               <input
                 type="text"
@@ -95,23 +96,44 @@ const ClientModalForm = ({ onClose, onSave, vertical = 'nails', initialClient = 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ej. Valeria Betancor"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-sm text-[#2A201D]"
+                className="w-full px-4 py-3 min-h-[48px] rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-base text-[#2A201D] focus:outline-none focus:border-[#C87A72]"
               />
             </div>
             <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-[#6E5A54] block mb-1">
-                Móvil WhatsApp
+              <label className="text-sm font-bold text-[#2A201D] block mb-1.5">
+                2. Teléfono WhatsApp
               </label>
               <input
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="638 877 945"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-sm text-[#2A201D]"
+                placeholder="Ej. 638 877 945"
+                className="w-full px-4 py-3 min-h-[48px] rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-base text-[#2A201D] focus:outline-none focus:border-[#C87A72]"
               />
+              <p className="text-xs text-[#6E5A54] mt-1">
+                Con esto ya puedes guardar la ficha en 3 segundos.
+              </p>
             </div>
           </div>
 
+          <button
+            type="button"
+            data-testid="toggle-client-details"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="w-full px-4 py-3 rounded-xl bg-[#FAF4EE] hover:bg-[#F3E6DC] border border-[#E9D9CF] text-sm font-bold text-[#4A3934] flex items-center justify-between cursor-pointer transition-all"
+          >
+            <span>
+              {showAdvanced
+                ? 'Ocultar detalles opcionales'
+                : isNails
+                ? '+ Añadir detalles opcionales (uñas, color, alergias, bono)'
+                : '+ Añadir detalles opcionales (fórmula, alergias, bono)'}
+            </span>
+            {showAdvanced ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+
+          {showAdvanced && (
+            <div className="space-y-4 pt-1">
           {isNails ? (
             <div className="p-4 rounded-2xl bg-[#FAF4EE] border border-[#E9D9CF] space-y-3">
               <p className="text-[11px] font-bold uppercase tracking-widest text-[#8E4742] flex items-center gap-1.5">
@@ -282,7 +304,7 @@ const ClientModalForm = ({ onClose, onSave, vertical = 'nails', initialClient = 
           </div>
 
           <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-[#6E5A54] block mb-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-[#6E5A54] block mb-1">
               Notas de preferencia
             </label>
             <input
@@ -290,20 +312,22 @@ const ClientModalForm = ({ onClose, onSave, vertical = 'nails', initialClient = 
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ej. Prefiere té verde · Le gusta música suave"
-              className="w-full px-3.5 py-2 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-xs text-[#2A201D]"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF6F2] border border-[#E9D9CF] text-sm text-[#2A201D]"
             />
           </div>
+            </div>
+          )}
 
-          <div className="p-3 rounded-xl bg-[#FAF4EE] border border-[#E9D9CF] text-[11px] text-[#4A3934] flex items-start gap-2 leading-relaxed">
-            <ShieldCheck size={15} className="text-[#5C8A74] shrink-0 mt-0.5" />
+          <div className="p-3.5 rounded-xl bg-[#FAF4EE] border border-[#E9D9CF] text-xs text-[#4A3934] flex items-start gap-2 leading-relaxed">
+            <ShieldCheck size={16} className="text-[#5C8A74] shrink-0 mt-0.5" />
             <span>
-              <strong className="text-[#2A201D]">Aviso RGPD (1ª capa · Art. 13 &amp; Art. 9.2.a):</strong> Los datos de contacto, alergias y fórmulas se tratan para la prestación del servicio. Recuerda recoger la <strong>firma RGPD de 4 capas</strong> en la ficha de la clienta.
+              <strong className="text-[#2A201D]">Aviso RGPD (Art. 13 &amp; 9):</strong> Los datos se tratan para gestionar su servicio. Después podrás recoger su firma RGPD en su ficha.
             </span>
           </div>
 
-          <button type="submit" className="btn-editorial w-full py-3 cursor-pointer">
-            <Check size={16} />
-            <span>Guardar Ficha 3D</span>
+          <button type="submit" className="btn-editorial w-full py-3.5 text-base cursor-pointer">
+            <Check size={18} />
+            <span>Guardar Clienta</span>
           </button>
         </form>
       </div>

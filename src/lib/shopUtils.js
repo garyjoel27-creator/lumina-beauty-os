@@ -472,6 +472,55 @@ export function clearPublicClientProfile(slug, storage = null) {
   }
 }
 
+export function buildSalonVCardContent({
+  name = 'Lumina Beauty',
+  phone = '',
+  address = '',
+  bookingUrl = '',
+  instagram = '',
+} = {}) {
+  const cleanName = String(name || 'Salón de Belleza').replace(/[\r\n;]/g, ' ').trim();
+  const cleanPhone = String(phone || '').replace(/[^\d+\s-]/g, '').trim();
+  const cleanAddress = String(address || '').replace(/[\r\n;]/g, ' ').trim();
+  const noteParts = [
+    bookingUrl ? `Reserva tu cita online en 10 segundos: ${bookingUrl}` : '',
+    instagram ? `Instagram: ${instagram}` : '',
+  ].filter(Boolean);
+
+  return [
+    'BEGIN:VCARD',
+    'VERSION:3.0',
+    `FN:${cleanName}`,
+    `ORG:${cleanName}`,
+    cleanPhone ? `TEL;TYPE=CELL,VOICE:${cleanPhone}` : null,
+    cleanAddress ? `ADR;TYPE=WORK:;;${cleanAddress};;;;` : null,
+    bookingUrl ? `URL:${bookingUrl}` : null,
+    noteParts.length ? `NOTE:${noteParts.join(' | ')}` : null,
+    'END:VCARD',
+  ]
+    .filter(Boolean)
+    .join('\r\n');
+}
+
+export function downloadSalonVCard(params = {}, filename = 'contacto-salon.vcf') {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+  const content = buildSalonVCardContent(params);
+  const blob = new Blob([content], { type: 'text/vcard;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return true;
+}
+
+export function buildWhatsAppAutoReplyTemplate(shopName = 'nuestro salón', portalUrl = '') {
+  return `¡Hola! ✨ Gracias por escribir a ${shopName}.\nPara ver huecos libres y reservar tu cita en 10 segundos sin esperar, toca aquí 👉 ${portalUrl}`;
+}
+
 export function buildSalonHubUrl(slug, origin = '') {
   const cleanSlug = normalizeShopSlug(slug) || DEFAULT_SHOP_SLUG;
   const prefix = origin ? origin.replace(/\/+$/, '') : '';

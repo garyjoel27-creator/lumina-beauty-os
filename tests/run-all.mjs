@@ -22,6 +22,8 @@ import {
   buildWhatsAppUrl,
   buildCustomerPortalUrl,
   buildAppointmentIcsContent,
+  buildSalonVCardContent,
+  buildWhatsAppAutoReplyTemplate,
   loadSavedPublicClientProfile,
   savePublicClientProfile,
   clearPublicClientProfile,
@@ -774,9 +776,24 @@ await test('16. Repeat Booking Without QR: ICS Calendar Export, Local Client Rec
   const dashboard = fs.readFileSync(path.join(rootDir, 'src/pages/Dashboard.jsx'), 'utf8');
   assert.ok(pubBooking.includes('repeat-booking-kit'));
   assert.ok(pubBooking.includes('download-ics-btn'));
+  assert.ok(pubBooking.includes('download-vcard-btn'));
+  assert.ok(pubBooking.includes('booking-stepper'));
   assert.ok(pubBooking.includes('returning-client-banner'));
   assert.ok(clientCtx.includes('buildCustomerPortalUrl'));
   assert.ok(dashboard.includes('buildCustomerPortalUrl'));
+
+  const vcard = buildSalonVCardContent({
+    name: 'CM Salón D’ Campodónico',
+    phone: '638 877 945',
+    address: 'Arrecife, Lanzarote',
+    bookingUrl: portalUrl,
+  });
+  assert.ok(vcard.includes('BEGIN:VCARD'));
+  assert.ok(vcard.includes(`URL:${portalUrl}`));
+  assert.ok(vcard.includes('END:VCARD'));
+
+  const autoReply = buildWhatsAppAutoReplyTemplate('CM Salón', portalUrl);
+  assert.ok(autoReply.includes(portalUrl));
 });
 
 console.log(`\n---------------------------------------------------------------------`);

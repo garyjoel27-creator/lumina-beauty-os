@@ -203,21 +203,34 @@ async function main() {
         if (req.url().includes('/sync')) syncCalls.push(req.url());
       });
       await page.goto(`${baseUrl}/r/campodonico-nails`, { waitUntil: 'networkidle2' });
+      const pubStep1 = await page.evaluate(() => ({
+        scrollW: document.documentElement.scrollWidth,
+        innerW: window.innerWidth,
+        hasStepper: Boolean(document.querySelector('[data-testid="booking-stepper"]')),
+        hasTitle: document.body.innerText.includes('Campodónico'),
+        hasServices: document.body.innerText.includes('Uñas acrílicas Talla S'),
+      }));
+      check(pubStep1.scrollW <= pubStep1.innerW, `/r/campodonico-nails Step 1 0px overflow (${pubStep1.scrollW} <= ${pubStep1.innerW})`);
+      check(pubStep1.hasStepper && pubStep1.hasTitle && pubStep1.hasServices, `/r/campodonico-nails renders 3-step wizard, CM Salón D' Campodónico & real services`);
+
+      // Navigate Step 1 -> Step 2 -> Step 3
+      await page.evaluate(() => document.querySelector('[data-testid="booking-next-step"]')?.click());
+      await new Promise((r) => setTimeout(r, 150));
+      await page.evaluate(() => document.querySelector('[data-testid="booking-step-3"]')?.click());
+      await new Promise((r) => setTimeout(r, 150));
+
       const pubCheck = await page.evaluate(() => {
         const rgpd = document.querySelector('[data-testid="rgpd-booking-section"]');
         const boxes = rgpd ? Array.from(rgpd.querySelectorAll('input[type="checkbox"]')) : [];
         return {
           scrollW: document.documentElement.scrollWidth,
           innerW: window.innerWidth,
-          hasTitle: document.body.innerText.includes('Campodónico'),
-          hasServices: document.body.innerText.includes('Uñas acrílicas Talla S'),
           hasRgpdBox: Boolean(rgpd && rgpd.textContent.includes('Art. 13 RGPD')),
           allUnchecked: boxes.length === 2 && boxes.every((b) => b.checked === false),
         };
       });
-      check(pubCheck.scrollW <= pubCheck.innerW, `/r/campodonico-nails 0px overflow (${pubCheck.scrollW} <= ${pubCheck.innerW})`);
-      check(pubCheck.hasTitle && pubCheck.hasServices, `/r/campodonico-nails displays CM Salón D' Campodónico & real services`);
-      check(pubCheck.hasRgpdBox && pubCheck.allUnchecked, `/r/campodonico-nails renders Art. 13 RGPD box with 2 unchecked checkboxes`);
+      check(pubCheck.scrollW <= pubCheck.innerW, `/r/campodonico-nails Step 3 0px overflow (${pubCheck.scrollW} <= ${pubCheck.innerW})`);
+      check(pubCheck.hasRgpdBox && pubCheck.allUnchecked, `/r/campodonico-nails Step 3 renders Art. 13 RGPD box with 2 unchecked checkboxes`);
       check(syncCalls.length === 0, `/r/campodonico-nails made ZERO /sync requests (actual: ${syncCalls.length})`);
 
       // Verify public Legal Modal hides DPA tab

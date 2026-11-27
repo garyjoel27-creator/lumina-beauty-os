@@ -34,8 +34,28 @@
     background-color: var(--color-canvas);
     color: var(--color-espresso);
     font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
     letter-spacing: -0.01em;
     overflow-x: hidden;
+  }
+
+  /* Evitar auto-zoom en iOS Safari y asegurar lectura cómoda en formularios */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* Suelo mínimo de legibilidad: elimina micro-letras ilegibles en móvil */
+  .text-\[9px\],
+  .text-\[10px\] {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+  .text-\[11px\] {
+    font-size: 13px !important;
+    line-height: 1.4 !important;
   }
 
   body {
@@ -95,9 +115,9 @@
   background: linear-gradient(135deg, #C87A72 0%, #B86566 100%);
   color: #FFFDFB;
   font-family: var(--font-sans);
-  font-size: 0.82rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   padding: 0.72rem 1.3rem;
   border-radius: 0.9rem;
   border: 1px solid rgba(184, 101, 102, 0.5);
